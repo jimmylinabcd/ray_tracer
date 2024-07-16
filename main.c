@@ -1,10 +1,10 @@
-#include<stdio.h>
-#include<stdbool.h>
+#include <stdio.h>
+#include <stdbool.h>
 #include <time.h>
 #include <stdlib.h>
 
-#include<cglm/cglm.h>
-#include<cglm/call.h>
+#include <cglm/cglm.h>
+#include <cglm/call.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -21,7 +21,7 @@ typedef CGLM_ALIGN_IF(16) vec4  mat4[4];
 #define OUTPUT_IMAGE_HEIGHT 1080
 #define OUTPUT_IMAGE_WIDTH 1920
 
-#define AA_SAMPLES 16
+#define AA_SAMPLES 1
 #define BOUNCE_DEPTH 60
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, vec3* target_ray);
@@ -34,10 +34,14 @@ int main(){
     // Camera
     double focal_length = 1.0;
 
-    vec3 origin = {0, 0, 0};
+    
 
-    vec3 horizontal =  {OUTPUT_IMAGE_WIDTH, 0, 0};
-    vec3 verticle = {0, OUTPUT_IMAGE_HEIGHT, 0};
+    double viewport_height = 2.0;
+    double viewport_width = (OUTPUT_IMAGE_WIDTH/OUTPUT_IMAGE_HEIGHT) * viewport_height;
+
+    vec3 origin = {0, 0, 0};
+    vec3 horizontal =  {viewport_width, 0, 0};
+    vec3 verticle = {0, viewport_height, 0};
 
     vec3 lower_left_corner = {origin[0] - horizontal[0]/2 - verticle[0]/2, origin[1] - horizontal[1]/2 - verticle[1]/2,  origin[2] - horizontal[2]/2 - verticle[2]/2 - focal_length};
 
@@ -77,7 +81,7 @@ int main(){
     for (int y = OUTPUT_IMAGE_HEIGHT - 1; y >=0 ; y--) {
         for (int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
 
-            vec3 pixel_colour;
+            vec3 pixel_colour = {0, 0, 0};
 
             for (int i = 0; i < AA_SAMPLES; i++){
 
@@ -94,17 +98,16 @@ int main(){
                 vec3 vertex2 = {1, 1, -1};
                 vec3 vertex3 = {2, 2, -1};
 
-                //float distance = 0;
-
-                //if (glm_ray_triangle(origin, ray_direction, vertex1, vertex2, vertex3, &distance) == true){
-                    //pixel_colour[0] = 255;
-                //}
-
-                vec3 unit_direction = unit_vector(r.direction());
-                auto a = 0.5*(unit_direction.y() + 1.0);
-                return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
 
 
+                float distance = 0;
+
+
+                glm_vec3_norm2(ray_direction);
+
+                if (glm_ray_triangle(origin, ray_direction, vertex1, vertex2, vertex3, &distance) == true){
+                    pixel_colour[0] = 255;
+                }
 
             }
 
