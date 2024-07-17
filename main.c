@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
 #include <time.h>
 #include <stdlib.h>
 #include <math.h>
@@ -21,7 +22,7 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define OUTPUT_IMAGE_WIDTH 1920
 
 #define AA_SAMPLES 1
-#define BOUNCE_DEPTH 60
+#define BOUNCE_DEPTH 1
 
 typedef struct {
     vec3 min;
@@ -38,8 +39,9 @@ typedef struct BVH_node{
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
 void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
-void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax);
-vec3 trace(vec3 ray_origin, vec3 ray_direction);
+void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
+void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth);
+void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 
 int main() {
     printf("Running Ray Tracer\n");
@@ -149,7 +151,9 @@ int main() {
 
                 glm_vec3_normalize(ray_direction);
 
-                vec3 temp = trace(origin, ray_direction);
+                vec3 temp;
+
+                trace(origin, ray_direction, &temp, BOUNCE_DEPTH);
 
                 pixel_colour[0] = temp[0];
                 pixel_colour[1] = temp[1];
@@ -172,27 +176,68 @@ int main() {
     return 0;
 }
 
-vec3 trace(vec3 ray_origin, vec3 ray_direction){
-    vec3 vertex1 = {-0.5, -0.5, -1};
-    vec3 vertex2 = {0.5, -0.5, -1};
-    vec3 vertex3 = {0, 0.5, -1};
+void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth) {
+    
+    if (depth < 0){
+        return;
+    }
+    vec3 vertex1 = {-0.5f, -0.5f, -1.0f};
+    vec3 vertex2 = {0.5f, -0.5f, -1.0f};
+    vec3 vertex3 = {0.0f, 0.5f, -1.0f};
 
     float distance = -1.0f;
     vec3 intersection;
-    ray_triangle_intersection(origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
-    if (distance > 0){
-        vec3 pixel_colour = {255, 0, 0};
-        return 
-    }else{
-        double a = 0.5*(ray[1] + 1.0);
+    ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
+
+    if (distance > 0.0f) {        
         vec3 pixel_colour;
-        // return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
-        pixel_colour[0] = (1.0 - a) * 255 + a * 128;
-        pixel_colour[1] = (1.0 - a) * 255 + a * 178;
-        pixel_colour[2] = (1.0 - a) * 255 + a * 255;
-        return pixel_colour;
+
+        vec3 reflect_ray;
+        vec3 surface_normal;
+        // compute the normal to perform the reflection
+        compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
+
+        glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
+
+        // recursive call
+        trace(intersection, reflect_ray, &pixel_colour, depth - 1);
+        
+        pixel_colour[0] = pixel_colour[0] * 0.5;
+        pixel_colour[1] = pixel_colour[1] * 0.5;
+        pixel_colour[2] = pixel_colour[2] * 0.5;
+
+
+        // copy the colour
+        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+    } else {
+        // background color sky
+        float t = 0.5f * (ray_direction[1] + 1.0f);
+        vec3 pixel_colour;
+        pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
+        pixel_colour[1] = (1.0f - t) * 255.0f + t * 178.0f; // Green component
+        pixel_colour[2] = (1.0f - t) * 255.0f + t * 255.0f; // Blue component
+
+        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
     }
 }
+
+void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal) {
+    vec3 AB, AC, crossProd;
+
+    // Compute edge vectors AB and AC
+    glm_vec3_sub(B, A, AB);
+    glm_vec3_sub(C, A, AC);
+
+    // Compute the cross product of AB and AC to get the normal
+    glm_vec3_cross(AB, AC, crossProd);
+
+    // Normalize the normal vector
+    glm_vec3_normalize(crossProd);
+
+    // Store the result in the provided normal vector
+    glm_vec3_copy(crossProd, normal);
+}
+
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection) {
     const float epsilon = 0.000001;
@@ -263,18 +308,35 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
     return;
 }
 
-void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax) {
+void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection) {
+    const float epsilon = 0.000001;
+
     vec3 inv_direction;
-    glm_vec3_div(ray_direction, (vec3){1.0f, 1.0f, 1.0f}, inv_direction);
+    glm_vec3_divs(ray_direction, 1.0f, inv_direction); // inverse ray
 
-    vec3 tbot = glm_vec3_mul(glm_vec3_sub(box_min, ray_origin), inv_direction);
-    vec3 ttop = glm_vec3_mul(glm_vec3_sub(box_max, ray_origin), inv_direction);
+    vec3 tbot, ttop;
+    glm_vec3_mulv(box_min, inv_direction, tbot);
+    glm_vec3_mulv(box_max, inv_direction, ttop);
 
-    vec3 tmin_v = glm_vec3_minv(ttop, tbot);
-    vec3 tmax_v = glm_vec3_maxv(ttop, tbot);
+    // Calculate tmin and tmax for each component
+    for (int i = 0; i < 3; ++i) {
+        tmin[i] = glm_min(tbot[i], ttop[i]);
+        tmax[i] = glm_max(tbot[i], ttop[i]);
+    }
 
-    *tmin = glm_vec3_max3(tmin_v);
-    *tmax = glm_vec3_min3(tmax_v);
+    *tmin = glm_max(glm_max(tmin[0], tmin[1]), tmin[2]);
+    *tmax = glm_min(glm_min(tmax[0], tmax[1]), tmax[2]);
+
+    // Check if intersection is valid
+    if (*tmin > *tmax || *tmax < 0) {
+        *tmin = -1.0f;
+        *tmax = -1.0f;
+        return;
+    }
+
+    // Calculate intersection point
+    glm_vec3_scale(ray_direction, *tmin, *out_intersection);
+    glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
 }
 
 
