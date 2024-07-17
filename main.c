@@ -24,7 +24,7 @@ typedef CGLM_ALIGN_IF(16) vec4  mat4[4];
 #define AA_SAMPLES 1
 #define BOUNCE_DEPTH 60
 
-void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, vec3* target_ray);
+void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t);
 
 int main(){
     printf("Running Ray Tracer\n");
@@ -34,8 +34,6 @@ int main(){
     // Camera
     double focal_length = 1.0;
 
-    
-
     double viewport_height = 2.0;
     double viewport_width = (OUTPUT_IMAGE_WIDTH/OUTPUT_IMAGE_HEIGHT) * viewport_height;
 
@@ -43,8 +41,10 @@ int main(){
     vec3 horizontal =  {viewport_width, 0, 0};
     vec3 verticle = {0, viewport_height, 0};
 
-    vec3 lower_left_corner = {origin[0] - horizontal[0]/2 - verticle[0]/2, origin[1] - horizontal[1]/2 - verticle[1]/2,  origin[2] - horizontal[2]/2 - verticle[2]/2 - focal_length};
-
+    vec3 lower_left_corner;
+    lower_left_corner[0] = origin[0] - horizontal[0]/2 - verticle[0]/2;
+    lower_left_corner[1] = origin[1] - horizontal[1]/2 - verticle[1]/2;
+    lower_left_corner[2] = origin[2] - horizontal[2]/2 - verticle[2]/2 - focal_length;
     // Scene Description
 
     // Loading Object
@@ -66,7 +66,40 @@ int main(){
   
     printf("Loading %d triangles from %s...\n", number_triangles, file_name);
 
+    vec3 *vertices = (vec3  *)malloc(number_triangles  * 3 * sizeof(vec3));
+
     // Load vertecies into memeory
+
+    // bounding box
+    float maxX = 0;
+	float maxY = 0;
+	float minX = 0;
+	float minY = 0;
+
+    for (unsigned int i = 0; i < number_triangles; i++) {
+        // discard normal vector 12 bytes
+        // Maybe we can use this?
+        fseek(ptr, 12, SEEK_CUR);
+
+        // Read vertices 3 * 12 bytes
+        fread(&vertices[i * 3], sizeof(vec3), 3, ptr);
+
+		if(vertices[i * 3][0] > maxX){
+			maxX = vertices[i * 3][0];
+		}else if(vertices[i * 3][0] < minX){
+			minX = vertices[i * 3][0];
+		}
+
+
+		if(vertices[i * 3][1] > maxY){
+			maxY = vertices[i * 3][1];
+		}else if(vertices[i * 3][1] < minY){
+			minX = vertices[i * 3][1];
+		}
+
+        // Discard attribute 2 byte 
+        fseek(ptr, 2, SEEK_CUR);
+    }
 
     fclose(ptr);
 
@@ -78,8 +111,8 @@ int main(){
 
     unsigned int index = 0;
 
-    for (int y = OUTPUT_IMAGE_HEIGHT - 1; y >=0 ; y--) {
-        for (int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
+    for (unsigned int y = OUTPUT_IMAGE_HEIGHT - 1; y >=0 ; y--) {
+        for (unsigned int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
 
             vec3 pixel_colour = {0, 0, 0};
 
@@ -94,21 +127,19 @@ int main(){
                 ray_direction[1] = lower_left_corner[1] + u * horizontal[1] + v * verticle[1] - origin[1];
                 ray_direction[2] = lower_left_corner[2] + u * horizontal[2] + v * verticle[2] - origin[2];
                 
-                vec3 vertex1 = {0, 0, -1};
-                vec3 vertex2 = {1, 1, -1};
-                vec3 vertex3 = {2, 2, -1};
+                vec3 vertex1 = {-0.5, -0.5, -1};
+                vec3 vertex2 = {0.5, -0.5, -1};
+                vec3 vertex3 = {0, 0.5, -1};
 
-
-
-                float distance = 0;
-
+                float distance;
 
                 glm_vec3_norm2(ray_direction);
 
-                if (glm_ray_triangle(origin, ray_direction, vertex1, vertex2, vertex3, &distance) == true){
+                ray_triangle_intersection(origin, ray_direction, vertex1, vertex2, vertex3, &distance);
+
+                if (distance){
                     pixel_colour[0] = 255;
                 }
-
             }
 
             frameData[index] = pixel_colour[0];
@@ -124,7 +155,7 @@ int main(){
     return 0;
 }
 
-void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, vec3* target_ray) {
+void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t) {
     const float epsilon = 0.000001;
 
     vec3 edge1, edge2, ray_cross_e2, s, s_cross_e1;
@@ -138,6 +169,7 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
 
     if (det > -epsilon && det < epsilon) {
         // Ray is parallel to triangle
+        *t = -1.0f; // Indicate no intersection
         return;
     }
 
@@ -147,6 +179,7 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     float u = inv_det * glm_vec3_dot(s, ray_cross_e2);
 
     if (u < 0 || u > 1) {
+        *t = -1.0f; // Indicate no intersection
         return;
     }
 
@@ -154,16 +187,13 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     float v = inv_det * glm_vec3_dot(ray_vector, s_cross_e1);
 
     if (v < 0 || u + v > 1) {
+        *t = -1.0f; // Indicate no intersection
         return;
     }
 
-    float t = inv_det * glm_vec3_dot(edge1, s_cross_e1);
+    *t = inv_det * glm_vec3_dot(edge1, s_cross_e1);
 
-    if (t > epsilon) {
-        vec3 temp;
-        glm_vec3_scale(ray_vector, t, temp);
-        glm_vec3_add(ray_origin, temp, temp);
-        glm_vec3_copy(*target_ray, temp);
+    if (*t > epsilon) {
         return;
     }
 }
