@@ -24,9 +24,71 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define BOUNCE_DEPTH 60
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
+void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
 
 int main() {
     printf("Running Ray Tracer\n");
+
+    // Scene Description
+
+    // Loading Object
+
+    unsigned char buffer[4];
+
+    char file_name[] = "knight.stl";
+
+    FILE *ptr;
+
+    ptr = fopen(file_name,"rb");
+
+    // Jump Past 80 Byte Header
+    fseek(ptr, 80, SEEK_SET);
+
+    // Read Number of Triangles
+    unsigned int number_triangles;
+    fread(&number_triangles,sizeof(unsigned int),1,ptr);
+  
+    printf("Loading %d triangles from %s...\n", number_triangles, file_name);
+
+    vec3 *vertices = (vec3  *)malloc(number_triangles  * 3 * sizeof(vec3));
+
+    // Load vertecies into memeory
+
+    // bounding box
+    float maxX = 0;
+	float maxY = 0;
+	float minX = 0;
+	float minY = 0;
+
+    for (unsigned int i = 0; i < number_triangles; i++) {
+        // discard normal vector 12 bytes
+        // Maybe we can use this?
+        fseek(ptr, 12, SEEK_CUR);
+
+        // Read vertices 3 * 12 bytes
+        fread(&vertices[i * 3], sizeof(vec3), 3, ptr);
+
+		if(vertices[i * 3][0] > maxX){
+			maxX = vertices[i * 3][0];
+		}else if(vertices[i * 3][0] < minX){
+			minX = vertices[i * 3][0];
+		}
+
+
+		if(vertices[i * 3][1] > maxY){
+			maxY = vertices[i * 3][1];
+		}else if(vertices[i * 3][1] < minY){
+			minX = vertices[i * 3][1];
+		}
+
+        // Discard attribute 2 byte 
+        fseek(ptr, 2, SEEK_CUR);
+    }
+
+    fclose(ptr);
+
+    // Build save or maybe load bvh?
+
 
     srand(time(NULL));
 
@@ -143,4 +205,29 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
         glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
         return;
     }
+}
+
+void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection) {
+    const float epsilon = 0.000001;
+    float denom = glm_vec3_dot(plane_normal, ray_vector);
+
+    // Check if the ray is parallel to the plane
+    if (fabs(denom) < epsilon) {
+        *t = -1.0f; // Indicate no intersection
+        return;
+    }
+
+    vec3 p0l0;
+    glm_vec3_sub(plane_point, ray_origin, p0l0);
+    *t = glm_vec3_dot(p0l0, plane_normal) / denom;
+
+    // Check if the intersection is behind the ray origin
+    if (*t < 0) {
+        *t = -1.0f; // Indicate no intersection
+        return;
+    }
+
+    glm_vec3_scale(ray_vector, *t, *out_intersection);
+    glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
+    return;
 }
