@@ -1,2 +1,3 @@
-tcc -run main.c -mavx512f -lcgm
+zig cc -o main.exe main.c
+main.exe
 pause
