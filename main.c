@@ -6,6 +6,9 @@
 #include <cglm/cglm.h>
 #include <cglm/call.h>
 
+#define GUILITE_ON
+#include "GuiLite.h"
+
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
@@ -26,7 +29,37 @@ typedef CGLM_ALIGN_IF(16) vec4  mat4[4];
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t);
 
+
+void button_callback(void *ctx, int id)
+{
+    printf("Button clicked ID: %d\n", id);
+}
+
 int main(){
+    // Initialize the GUI
+    gui_t gui;
+    gui_init(&gui, 800, 600, "Test");
+
+    // Create a button
+    gui_element_t button = gui_create_button(&gui, 350, 250, 100, 50, "click", button_callback, NULL);
+
+    // Main loop
+    while (gui_process(&gui))
+    {
+        // Clear the screen
+        gui_clear(&gui);
+
+        // Render the button
+        gui_render_element(&gui, &button);
+
+        // Update the display
+        gui_display(&gui);
+    }
+
+    // Clean up
+    gui_destroy(&gui);
+    return 0;
+
     printf("Running Ray Tracer\n");
 
     srand(time(NULL));
