@@ -37,11 +37,27 @@ typedef struct BVH_node{
     unsigned int obj_end;
 } BVH_node;
 
+typedef struct {
+    vec3 vertex1;
+    vec3 vertex2;
+    vec3 vertex3;
+    vec3 normal;
+} triangle;
+
+typedef struct {
+    unsigned int id;
+    struct triangle* triangle_list;
+    unsigned int list_size;
+    BVH_node root;
+} object;
+
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
 void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
+
+void random_unit_vector(vec3 dest);
 
 int main() {
     printf("Running Ray Tracer\n");
@@ -179,11 +195,16 @@ int main() {
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth) {
     
     if (depth < 0){
+        // return black
+        vec3 pixel_colour = {0, 0, 0};
+        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
         return;
     }
     vec3 vertex1 = {-0.5f, -0.5f, -1.0f};
     vec3 vertex2 = {0.5f, -0.5f, -1.0f};
     vec3 vertex3 = {0.0f, 0.5f, -1.0f};
+
+    // iterate over every triangle in a list of global objects
 
     float distance = -1.0f;
     vec3 intersection;
@@ -194,17 +215,33 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
         vec3 reflect_ray;
         vec3 surface_normal;
+
+        // is it cheaper to store all the normals in memeory or compute them?
+        // maybe some sort of lookup table
+
+        // cheaper to store beacuse it has to be computed anyway so...
+
+        // True Lambertian 
+
         // compute the normal to perform the reflection
+        vec3 temp;
+        random_unit_vector(temp);
+        
         compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
+
+        glm_vec3_add(surface_normal, temp, surface_normal);
+
+        glm_vec3_normalize(surface_normal);
 
         glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
 
         // recursive call
         trace(intersection, reflect_ray, &pixel_colour, depth - 1);
         
-        pixel_colour[0] = pixel_colour[0] * 0.5;
-        pixel_colour[1] = pixel_colour[1] * 0.5;
-        pixel_colour[2] = pixel_colour[2] * 0.5;
+        float gamut = 0.5;
+        pixel_colour[0] *= gamut;
+        pixel_colour[1] *= gamut;
+        pixel_colour[2] *= gamut;
 
 
         // copy the colour
@@ -236,6 +273,25 @@ void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal) {
 
     // Store the result in the provided normal vector
     glm_vec3_copy(crossProd, normal);
+}
+
+void random_unit_vector(vec3 dest) {
+    // Seed the random number generator
+    srand(time(NULL));
+
+    // Generate random spherical coordinates
+    float theta = 2.0f * M_PI * ((float)rand() / RAND_MAX);
+    float phi = acos(2.0f * ((float)rand() / RAND_MAX) - 1.0f);
+    
+    // Convert spherical coordinates to Cartesian coordinates
+    float x = sin(phi) * cos(theta);
+    float y = sin(phi) * sin(theta);
+    float z = cos(phi);
+
+    // Create the random unit vector
+    vec3 random_vector = {x, y, z};
+    glm_vec3_normalize(random_vector);
+    glm_vec3_copy(random_vector, dest);
 }
 
 
