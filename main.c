@@ -23,8 +23,23 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define AA_SAMPLES 1
 #define BOUNCE_DEPTH 60
 
+typedef struct {
+    vec3 min;
+    vec3 max;
+} bounding_box;
+
+typedef struct BVH_node{
+    bounding_box bdbox;
+    struct BVH_node* left;
+    struct BVH_node* right;
+    unsigned int obj_start;
+    unsigned int obj_end;
+} BVH_node;
+
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
 void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
+void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax);
+vec3 trace(vec3 ray_origin, vec3 ray_direction);
 
 int main() {
     printf("Running Ray Tracer\n");
@@ -109,9 +124,6 @@ int main() {
     lower_left_corner[2] -= focal_length;
 
     // Scene Description
-    vec3 vertex1 = {-0.5, -0.5, -1};
-    vec3 vertex2 = {0.5, -0.5, -1};
-    vec3 vertex3 = {0, 0.5, -1};
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -137,15 +149,12 @@ int main() {
 
                 glm_vec3_normalize(ray_direction);
 
-                float distance = -1.0f;
-                vec3 intersection;
-                ray_triangle_intersection(origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
+                vec3 temp = trace(origin, ray_direction);
 
-                if (distance > 0) {
-                    pixel_colour[0] = 255;
-                    pixel_colour[1] = 0;
-                    pixel_colour[2] = 0;
-                }
+                pixel_colour[0] = temp[0];
+                pixel_colour[1] = temp[1];
+                pixel_colour[2] = temp[2];
+                
             }
 
             frameData[index] = (unsigned char) pixel_colour[0];
@@ -163,6 +172,28 @@ int main() {
     return 0;
 }
 
+vec3 trace(vec3 ray_origin, vec3 ray_direction){
+    vec3 vertex1 = {-0.5, -0.5, -1};
+    vec3 vertex2 = {0.5, -0.5, -1};
+    vec3 vertex3 = {0, 0.5, -1};
+
+    float distance = -1.0f;
+    vec3 intersection;
+    ray_triangle_intersection(origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
+    if (distance > 0){
+        vec3 pixel_colour = {255, 0, 0};
+        return 
+    }else{
+        double a = 0.5*(ray[1] + 1.0);
+        vec3 pixel_colour;
+        // return (1.0-a)*color(1.0, 1.0, 1.0) + a*color(0.5, 0.7, 1.0);
+        pixel_colour[0] = (1.0 - a) * 255 + a * 128;
+        pixel_colour[1] = (1.0 - a) * 255 + a * 178;
+        pixel_colour[2] = (1.0 - a) * 255 + a * 255;
+        return pixel_colour;
+    }
+}
+
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection) {
     const float epsilon = 0.000001;
 
@@ -176,7 +207,7 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     float det = glm_vec3_dot(edge1, ray_cross_e2);
 
     if (det > -epsilon && det < epsilon) {
-        *t = -1.0f; // Indicate no intersection
+        *t = -1.0f;
         return;
     }
 
@@ -186,7 +217,7 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     float u = inv_det * glm_vec3_dot(s, ray_cross_e2);
 
     if (u < 0 || u > 1) {
-        *t = -1.0f; // Indicate no intersection
+        *t = -1.0f;
         return;
     }
 
@@ -194,7 +225,7 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     float v = inv_det * glm_vec3_dot(ray_vector, s_cross_e1);
 
     if (v < 0 || u + v > 1) {
-        *t = -1.0f; // Indicate no intersection
+        *t = -1.0f;
         return;
     }
 
@@ -211,9 +242,9 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
     const float epsilon = 0.000001;
     float denom = glm_vec3_dot(plane_normal, ray_vector);
 
-    // Check if the ray is parallel to the plane
+    // check if the ray is parallel to the plane
     if (fabs(denom) < epsilon) {
-        *t = -1.0f; // Indicate no intersection
+        *t = -1.0f;
         return;
     }
 
@@ -221,9 +252,9 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
     glm_vec3_sub(plane_point, ray_origin, p0l0);
     *t = glm_vec3_dot(p0l0, plane_normal) / denom;
 
-    // Check if the intersection is behind the ray origin
+    // check if the intersection is behind the ray origin
     if (*t < 0) {
-        *t = -1.0f; // Indicate no intersection
+        *t = -1.0f;
         return;
     }
 
@@ -231,3 +262,19 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
     glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
     return;
 }
+
+void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax) {
+    vec3 inv_direction;
+    glm_vec3_div(ray_direction, (vec3){1.0f, 1.0f, 1.0f}, inv_direction);
+
+    vec3 tbot = glm_vec3_mul(glm_vec3_sub(box_min, ray_origin), inv_direction);
+    vec3 ttop = glm_vec3_mul(glm_vec3_sub(box_max, ray_origin), inv_direction);
+
+    vec3 tmin_v = glm_vec3_minv(ttop, tbot);
+    vec3 tmax_v = glm_vec3_maxv(ttop, tbot);
+
+    *tmin = glm_vec3_max3(tmin_v);
+    *tmax = glm_vec3_min3(tmax_v);
+}
+
+
