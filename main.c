@@ -48,7 +48,7 @@ typedef struct {
 
 typedef struct {
     unsigned int id;
-    struct triangle* triangle_list;
+    triangle* triangle_list;
     unsigned int list_size;
     BVH_node root;
 } object;
@@ -203,8 +203,8 @@ int main() {
                 glm_vec3_normalize(ray_direction);
 
                 vec3 temp;
-
-                trace(origin, ray_direction, &temp, BOUNCE_DEPTH);
+                // mighbt need to do the object loop here and just pass in a single object
+                trace(origin, ray_direction, &temp, BOUNCE_DEPTH, &scene);
 
                 pixel_colour[0] = temp[0];
                 pixel_colour[1] = temp[1];
@@ -238,12 +238,22 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     
 
     //Iterate over the objects
-    for (int j = 0; j < scene->id + 1; j++){
+    //for (int j = 0; j < scene->id + 1; j++){
         // iterate over triangles in the object
-        for (int i = 0; i < scene.list_size; i++){
+        //for (int i = 0; i < scene.list_size; i++){
             //
-        }
-    }
+        //}
+    //}
+
+    vec3 vertex1, vertex2, vertex3;
+
+    triangle test_triangle = scene->triangle_list[scene->root.triangle_index_start];
+
+    glm_vec3_copy(test_triangle.vertex1, vertex1);
+    glm_vec3_copy(test_triangle.vertex2, vertex2);
+    glm_vec3_copy(test_triangle.vertex3, vertex3);
+    
+
 
     float distance = -1.0f;
     vec3 intersection;
@@ -275,7 +285,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
         glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
 
         // recursive call
-        trace(intersection, reflect_ray, &pixel_colour, depth - 1);
+        trace(intersection, reflect_ray, &pixel_colour, depth - 1, &scene);
         
         float gamut = 0.5;
         pixel_colour[0] *= gamut;
