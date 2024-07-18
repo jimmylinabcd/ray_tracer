@@ -33,8 +33,9 @@ typedef struct BVH_node{
     bounding_box bdbox;
     struct BVH_node* left;
     struct BVH_node* right;
-    unsigned int obj_start;
-    unsigned int obj_end;
+    // obj list needs to be sorted
+    unsigned int triangle_index_start;
+    unsigned int triangle_number;
 } BVH_node;
 
 typedef struct {
@@ -42,6 +43,7 @@ typedef struct {
     vec3 vertex2;
     vec3 vertex3;
     vec3 normal;
+    vec3 colour;
 } triangle;
 
 typedef struct {
@@ -54,7 +56,7 @@ typedef struct {
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
 void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
-void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth);
+void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 
 void random_unit_vector(vec3 dest);
@@ -63,6 +65,41 @@ int main() {
     printf("Running Ray Tracer\n");
 
     // Scene Description
+
+    object scene[1];
+
+    // create test triangle
+    triangle test_triangle;
+    glm_vec3_copy((vec3){-0.5f, -0.5f, -1.0f}, test_triangle.vertex1);
+    glm_vec3_copy((vec3){0.5f, -0.5f, -1.0f}, test_triangle.vertex2);
+    glm_vec3_copy((vec3){0.0f, 0.5f, -1.0f}, test_triangle.vertex3);
+
+    // calculate the normal
+    vec3 temp_normal;
+    compute_surface_normal(test_triangle.vertex1, test_triangle.vertex2, test_triangle.vertex3, temp_normal);
+
+    memcpy(test_triangle.normal, temp_normal, sizeof(vec3));
+    glm_vec3_copy((vec3){255, 255, 255}, test_triangle.colour);
+
+    // create test object
+    scene[0].id = 0;
+    scene[0].triangle_list = &test_triangle;
+    scene[0].list_size = 1;
+    BVH_node test_bvh;
+    
+    test_bvh.left = NULL;
+    test_bvh.right = NULL;
+    test_bvh.triangle_index_start = 0;
+    test_bvh.triangle_number = 1;
+    
+    bounding_box test_bounding_box;
+    glm_vec3_copy((vec3){-0.5f, -0.5f, -1.0f}, test_bounding_box.min);
+    glm_vec3_copy((vec3){0.5f, 0.5f, -1.0f}, test_bounding_box.max);
+    test_bvh.bdbox = test_bounding_box;
+
+
+    scene[0].root = test_bvh;
+
 
     // Loading Object
 
@@ -141,8 +178,6 @@ int main() {
     glm_vec3_sub(lower_left_corner, vertical, lower_left_corner);
     lower_left_corner[2] -= focal_length;
 
-    // Scene Description
-
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
 
@@ -192,7 +227,7 @@ int main() {
     return 0;
 }
 
-void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth) {
+void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene) {
     
     if (depth < 0){
         // return black
@@ -200,11 +235,15 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
         memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
         return;
     }
-    vec3 vertex1 = {-0.5f, -0.5f, -1.0f};
-    vec3 vertex2 = {0.5f, -0.5f, -1.0f};
-    vec3 vertex3 = {0.0f, 0.5f, -1.0f};
+    
 
-    // iterate over every triangle in a list of global objects
+    //Iterate over the objects
+    for (int j = 0; j < scene->id + 1; j++){
+        // iterate over triangles in the object
+        for (int i = 0; i < scene.list_size; i++){
+            //
+        }
+    }
 
     float distance = -1.0f;
     vec3 intersection;
