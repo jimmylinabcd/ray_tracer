@@ -73,17 +73,43 @@ int main() {
     glm_vec3_copy((vec3){-0.5f, -0.5f, -1.0f}, test_triangle.vertex1);
     glm_vec3_copy((vec3){0.5f, -0.5f, -1.0f}, test_triangle.vertex2);
     glm_vec3_copy((vec3){0.0f, 0.5f, -1.0f}, test_triangle.vertex3);
-
     // calculate the normal
     vec3 temp_normal;
     compute_surface_normal(test_triangle.vertex1, test_triangle.vertex2, test_triangle.vertex3, temp_normal);
 
+
+    // ground plane
+    triangle test_triangle2;
+    glm_vec3_copy((vec3){-1.0f, -0.5f, -1.0f}, test_triangle2.vertex1);
+    glm_vec3_copy((vec3){1.0f, -0.5f, -1.0f}, test_triangle2.vertex2);
+    glm_vec3_copy((vec3){-1.0f, -0.5f, -2.0f}, test_triangle2.vertex3);
+    vec3 temp_normal2;
+    compute_surface_normal(test_triangle2.vertex1, test_triangle2.vertex2, test_triangle2.vertex3, temp_normal2);
+
+    triangle test_triangle3;
+    glm_vec3_copy((vec3){-1.0f, -0.5f, -2.0f}, test_triangle3.vertex1);
+    glm_vec3_copy((vec3){1.5f, -0.5f, -2.0f}, test_triangle3.vertex2);
+    glm_vec3_copy((vec3){1.0f, -0.5f, -1.0f}, test_triangle3.vertex3);
+    vec3 temp_normal3;
+    compute_surface_normal(test_triangle3.vertex1, test_triangle3.vertex2, test_triangle3.vertex3, temp_normal2);
+
+    
+
     memcpy(test_triangle.normal, temp_normal, sizeof(vec3));
+    memcpy(test_triangle2.normal, temp_normal2, sizeof(vec3));
+    memcpy(test_triangle3.normal, temp_normal3, sizeof(vec3));
+    
     glm_vec3_copy((vec3){255, 255, 255}, test_triangle.colour);
+    glm_vec3_copy((vec3){255, 255, 255}, test_triangle2.colour);
+    glm_vec3_copy((vec3){255, 255, 255}, test_triangle3.colour);
 
     // create test object
     scene[0].id = 0;
-    scene[0].triangle_list = &test_triangle;
+    //scene[0].triangle_list = &test_triangle;
+    scene[0].triangle_list = malloc(sizeof(triangle) * 3);
+    scene[0].triangle_list[0] = test_triangle;
+    scene[0].triangle_list[2] = test_triangle2;
+    scene[0].triangle_list[3] = test_triangle3;
     scene[0].list_size = 1;
     BVH_node test_bvh;
     
@@ -253,8 +279,6 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     glm_vec3_copy(test_triangle.vertex2, vertex2);
     glm_vec3_copy(test_triangle.vertex3, vertex3);
     
-
-
     float distance = -1.0f;
     vec3 intersection;
     ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
