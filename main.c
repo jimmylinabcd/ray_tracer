@@ -93,8 +93,6 @@ int main() {
     vec3 temp_normal3;
     compute_surface_normal(test_triangle3.vertex1, test_triangle3.vertex2, test_triangle3.vertex3, temp_normal2);
 
-    
-
     memcpy(test_triangle.normal, temp_normal, sizeof(vec3));
     memcpy(test_triangle2.normal, temp_normal2, sizeof(vec3));
     memcpy(test_triangle3.normal, temp_normal3, sizeof(vec3));
@@ -108,9 +106,9 @@ int main() {
     //scene[0].triangle_list = &test_triangle;
     scene[0].triangle_list = malloc(sizeof(triangle) * 3);
     scene[0].triangle_list[0] = test_triangle;
-    scene[0].triangle_list[2] = test_triangle2;
-    scene[0].triangle_list[3] = test_triangle3;
-    scene[0].list_size = 1;
+    scene[0].triangle_list[1] = test_triangle2;
+    scene[0].triangle_list[2] = test_triangle3;
+    scene[0].list_size = 3;
     BVH_node test_bvh;
     
     test_bvh.left = NULL;
@@ -229,8 +227,12 @@ int main() {
                 glm_vec3_normalize(ray_direction);
 
                 vec3 temp;
+                //Iterate over the objects
+                //for (int j = 0; j < scene->id + 1; j++){
+                    
+                //}
                 // mighbt need to do the object loop here and just pass in a single object
-                trace(origin, ray_direction, &temp, BOUNCE_DEPTH, &scene);
+                trace(origin, ray_direction, &temp, BOUNCE_DEPTH, scene);
 
                 pixel_colour[0] = temp[0];
                 pixel_colour[1] = temp[1];
@@ -246,6 +248,7 @@ int main() {
         }
     }
 
+    printf("Completed, saving image...\n");
     stbi_write_png("output.png", OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT, 3, frameData, 0);
 
     free(frameData);
@@ -261,74 +264,72 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
         memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
         return;
     }
-    
 
-    //Iterate over the objects
-    //for (int j = 0; j < scene->id + 1; j++){
-        // iterate over triangles in the object
-        //for (int i = 0; i < scene.list_size; i++){
-            //
-        //}
-    //}
+    // loop over all the triangles in 1 object
+    // issue with overriding
+    // look at triangle z index
+    for(int i = 0; i < scene->list_size; i++){
+        vec3 vertex1, vertex2, vertex3;
 
-    vec3 vertex1, vertex2, vertex3;
+        triangle test_triangle = scene->triangle_list[i];
 
-    triangle test_triangle = scene->triangle_list[scene->root.triangle_index_start];
-
-    glm_vec3_copy(test_triangle.vertex1, vertex1);
-    glm_vec3_copy(test_triangle.vertex2, vertex2);
-    glm_vec3_copy(test_triangle.vertex3, vertex3);
-    
-    float distance = -1.0f;
-    vec3 intersection;
-    ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
-
-    if (distance > 0.0f) {        
-        vec3 pixel_colour;
-
-        vec3 reflect_ray;
-        vec3 surface_normal;
-
-        // is it cheaper to store all the normals in memeory or compute them?
-        // maybe some sort of lookup table
-
-        // cheaper to store beacuse it has to be computed anyway so...
-
-        // True Lambertian 
-
-        // compute the normal to perform the reflection
-        vec3 temp;
-        random_unit_vector(temp);
+        glm_vec3_copy(test_triangle.vertex1, vertex1);
+        glm_vec3_copy(test_triangle.vertex2, vertex2);
+        glm_vec3_copy(test_triangle.vertex3, vertex3);
         
-        compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
+        float distance = -1.0f;
+        vec3 intersection;
+        ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
 
-        glm_vec3_add(surface_normal, temp, surface_normal);
+        if (distance > 0.0f) {        
+            vec3 pixel_colour;
 
-        glm_vec3_normalize(surface_normal);
+            vec3 reflect_ray;
+            vec3 surface_normal;
 
-        glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
+            // is it cheaper to store all the normals in memeory or compute them?
+            // maybe some sort of lookup table
 
-        // recursive call
-        trace(intersection, reflect_ray, &pixel_colour, depth - 1, &scene);
-        
-        float gamut = 0.5;
-        pixel_colour[0] *= gamut;
-        pixel_colour[1] *= gamut;
-        pixel_colour[2] *= gamut;
+            // cheaper to store beacuse it has to be computed anyway so...
+
+            // True Lambertian 
+
+            // compute the normal to perform the reflection
+            vec3 temp;
+            random_unit_vector(temp);
+            
+            compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
+
+            glm_vec3_add(surface_normal, temp, surface_normal);
+
+            glm_vec3_normalize(surface_normal);
+
+            glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
+
+            // recursive call
+            trace(intersection, reflect_ray, &pixel_colour, depth - 1, scene);
+            
+            float gamut = 0.5;
+            pixel_colour[0] *= gamut;
+            pixel_colour[1] *= gamut;
+            pixel_colour[2] *= gamut;
 
 
-        // copy the colour
-        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
-    } else {
-        // background color sky
-        float t = 0.5f * (ray_direction[1] + 1.0f);
-        vec3 pixel_colour;
-        pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
-        pixel_colour[1] = (1.0f - t) * 255.0f + t * 178.0f; // Green component
-        pixel_colour[2] = (1.0f - t) * 255.0f + t * 255.0f; // Blue component
+            // copy the colour
+            memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+        } else {
+            // background color sky
+            float t = 0.5f * (ray_direction[1] + 1.0f);
+            vec3 pixel_colour;
+            pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
+            pixel_colour[1] = (1.0f - t) * 255.0f + t * 178.0f; // Green component
+            pixel_colour[2] = (1.0f - t) * 255.0f + t * 255.0f; // Blue component
 
-        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+            memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+        }
     }
+
+    
 }
 
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal) {
