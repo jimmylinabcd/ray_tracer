@@ -58,6 +58,8 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
+double randomRange(int min, int max);
+double randomDouble();
 
 void random_unit_vector(vec3 dest);
 
@@ -80,16 +82,16 @@ int main() {
 
     // ground plane
     triangle test_triangle2;
-    glm_vec3_copy((vec3){-1.0f, -0.5f, -1.0f}, test_triangle2.vertex1);
-    glm_vec3_copy((vec3){1.0f, -0.5f, -1.0f}, test_triangle2.vertex2);
-    glm_vec3_copy((vec3){-1.0f, -0.5f, -2.0f}, test_triangle2.vertex3);
+    glm_vec3_copy((vec3){-1.0f, -1.0f, -1.0f}, test_triangle2.vertex1);
+    glm_vec3_copy((vec3){1.0f, -1.0f, -1.0f}, test_triangle2.vertex2);
+    glm_vec3_copy((vec3){-1.0f, -1.0f, -3.0f}, test_triangle2.vertex3);
     vec3 temp_normal2;
     compute_surface_normal(test_triangle2.vertex1, test_triangle2.vertex2, test_triangle2.vertex3, temp_normal2);
 
     triangle test_triangle3;
-    glm_vec3_copy((vec3){-1.0f, -0.5f, -2.0f}, test_triangle3.vertex1);
-    glm_vec3_copy((vec3){1.5f, -0.5f, -2.0f}, test_triangle3.vertex2);
-    glm_vec3_copy((vec3){1.0f, -0.5f, -1.0f}, test_triangle3.vertex3);
+    glm_vec3_copy((vec3){1.0f, -1.0f, -1.0f}, test_triangle3.vertex1);
+    glm_vec3_copy((vec3){1.0f, -1.0f, -3.0f}, test_triangle3.vertex2);
+    glm_vec3_copy((vec3){-1.0f, -1.0f, -3.0f}, test_triangle3.vertex3);
     vec3 temp_normal3;
     compute_surface_normal(test_triangle3.vertex1, test_triangle3.vertex2, test_triangle3.vertex3, temp_normal2);
 
@@ -187,12 +189,19 @@ int main() {
     srand(time(NULL));
 
     // Camera
+    //double focal_length = 1.0;
+
+    //double viewport_height = 2.0;
+    //double viewport_width = (OUTPUT_IMAGE_WIDTH / OUTPUT_IMAGE_HEIGHT) * viewport_height;
+
+    // , forward if negative
+    // Camera
+    // temp fix before fixing it properly later
+    vec3 origin = {0.0f, 0.0f, 0.0f};
     double focal_length = 1.0;
-
     double viewport_height = 2.0;
-    double viewport_width = (OUTPUT_IMAGE_WIDTH / OUTPUT_IMAGE_HEIGHT) * viewport_height;
+    double viewport_width = (OUTPUT_IMAGE_WIDTH / (double)OUTPUT_IMAGE_HEIGHT) * viewport_height;
 
-    vec3 origin = {0, 0, 0};
     vec3 horizontal = {viewport_width, 0, 0};
     vec3 vertical = {0, viewport_height, 0};
 
@@ -201,6 +210,11 @@ int main() {
     glm_vec3_sub(lower_left_corner, horizontal, lower_left_corner);
     glm_vec3_sub(lower_left_corner, vertical, lower_left_corner);
     lower_left_corner[2] -= focal_length;
+
+    glm_vec3_scale(lower_left_corner, 0.5f, lower_left_corner);
+    glm_vec3_add(lower_left_corner, origin, lower_left_corner);
+
+
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -320,15 +334,11 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
             pixel_colour[2] *= gamut;
 
 
-            if (changed = false){
+            if (changed == false){
                 memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
                 changed = true;
-                printf("True");
             }
             
-            
-
-
         }
     }
     if (changed == false){
@@ -362,22 +372,42 @@ void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal) {
 }
 
 void random_unit_vector(vec3 dest) {
-    // Seed the random number generator
     srand(time(NULL));
 
     // Generate random spherical coordinates
-    float theta = 2.0f * M_PI * ((float)rand() / RAND_MAX);
-    float phi = acos(2.0f * ((float)rand() / RAND_MAX) - 1.0f);
+    //float theta = 2.0f * M_PI * ((float)rand() / RAND_MAX);
+    //float phi = acos(2.0f * ((float)rand() / RAND_MAX) - 1.0f);
     
     // Convert spherical coordinates to Cartesian coordinates
-    float x = sin(phi) * cos(theta);
-    float y = sin(phi) * sin(theta);
-    float z = cos(phi);
+    //float x = sin(phi) * cos(theta);
+    //float y = sin(phi) * sin(theta);
+    //float z = cos(phi);
 
     // Create the random unit vector
-    vec3 random_vector = {x, y, z};
-    glm_vec3_normalize(random_vector);
-    glm_vec3_copy(random_vector, dest);
+    //vec3 random_vector = {x, y, z};
+    //glm_vec3_normalize(random_vector);
+    //glm_vec3_copy(random_vector, dest);
+
+    while (true){
+        vec3 temp;
+        temp[0] = randomRange(-1,1);
+        temp[1] = randomRange(-1,1);
+        temp[2] = randomRange(-1,1);
+
+        glm_vec3_normalize(temp);
+        if (temp[0]*temp[0] + temp[1]*temp[1] + temp[2]*temp[2] >= 1){
+           glm_vec3_copy(temp, dest);
+           return ;
+        } 
+    }
+}
+
+double randomRange(int min, int max){
+	return min + (max-min)*randomDouble();
+}
+
+double randomDouble(){
+	return rand() / (RAND_MAX + 1.0);;
 }
 
 
