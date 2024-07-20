@@ -21,7 +21,7 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define OUTPUT_IMAGE_HEIGHT 1080
 #define OUTPUT_IMAGE_WIDTH 1920
 
-#define AA_SAMPLES 1
+#define AA_SAMPLES 2
 #define BOUNCE_DEPTH 1
 
 typedef struct {
@@ -68,7 +68,7 @@ int main() {
 
     // Scene Description
 
-    object scene[1];
+    object scene[2];
 
     vec3 origin = {0.0f, 0.0f, 0.0f};
     double focal_length = 1.0;
@@ -176,30 +176,32 @@ int main() {
 	float minX = 0;
 	float minY = 0;
 
+    scene[1].id = 1;
+    scene[1].triangle_list = malloc(sizeof(triangle) * number_triangles);
+    scene[1].list_size = number_triangles;
+    scene[1].root = test_bvh;
+
     for (unsigned int i = 0; i < number_triangles; i++) {
-        // discard normal vector 12 bytes
-        // Maybe we can use this?
-        fseek(ptr, 12, SEEK_CUR);
+        triangle temp;
+        vec3 buffer[4]; 
 
-        // Read vertices 3 * 12 bytes
-        fread(&vertices[i * 3], sizeof(vec3), 3, ptr);
+        fread(buffer, sizeof(vec3) * 4, 1, ptr);
 
-		if(vertices[i * 3][0] > maxX){
-			maxX = vertices[i * 3][0];
-		}else if(vertices[i * 3][0] < minX){
-			minX = vertices[i * 3][0];
-		}
+        
+        memcpy(temp.normal, buffer[0], sizeof(vec3));
+        memcpy(temp.vertex1, buffer[1], sizeof(vec3));
+        memcpy(temp.vertex2, buffer[2], sizeof(vec3));
+        memcpy(temp.vertex3, buffer[3], sizeof(vec3));
+        memcpy(temp.colour, (vec3){255, 255, 255}, sizeof(vec3));
+        glm_vec3_copy((vec3) {255, 255, 255}, temp.colour);
 
-
-		if(vertices[i * 3][1] > maxY){
-			maxY = vertices[i * 3][1];
-		}else if(vertices[i * 3][1] < minY){
-			minX = vertices[i * 3][1];
-		}
+        scene[1].triangle_list[i] = temp;       
 
         // Discard attribute 2 byte 
         fseek(ptr, 2, SEEK_CUR);
     }
+
+    
 
     fclose(ptr);
 
@@ -244,9 +246,9 @@ int main() {
             }
 
             glm_vec3_clamp(pixel_colour, 0 , AA_SAMPLES * 255);
-            frameData[index] = (unsigned char) pixel_colour[0] / AA_SAMPLES;
-            frameData[index + 1] = (unsigned char) pixel_colour[1] / AA_SAMPLES;
-            frameData[index + 2] = (unsigned char) pixel_colour[2] / AA_SAMPLES;
+            frameData[index] = (unsigned char) (pixel_colour[0] / AA_SAMPLES);
+            frameData[index + 1] = (unsigned char) (pixel_colour[1] / AA_SAMPLES);
+            frameData[index + 2] = (unsigned char) (pixel_colour[2] / AA_SAMPLES);
 
             index += 3;
         }
