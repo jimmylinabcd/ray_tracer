@@ -268,6 +268,9 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     // loop over all the triangles in 1 object
     // issue with overriding
     // look at triangle z index
+    vec3 pixel_colour;
+    bool changed = false;
+
     for(int i = 0; i < scene->list_size; i++){
         vec3 vertex1, vertex2, vertex3;
 
@@ -281,8 +284,10 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
         vec3 intersection;
         ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
 
+        
+
         if (distance > 0.0f) {        
-            vec3 pixel_colour;
+            
 
             vec3 reflect_ray;
             vec3 surface_normal;
@@ -315,19 +320,26 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
             pixel_colour[2] *= gamut;
 
 
-            // copy the colour
-            memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
-        } else {
-            // background color sky
-            float t = 0.5f * (ray_direction[1] + 1.0f);
-            vec3 pixel_colour;
-            pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
-            pixel_colour[1] = (1.0f - t) * 255.0f + t * 178.0f; // Green component
-            pixel_colour[2] = (1.0f - t) * 255.0f + t * 255.0f; // Blue component
+            if (changed = false){
+                memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+                changed = true;
+                printf("True");
+            }
+            
+            
 
-            memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+
         }
     }
+    if (changed == false){
+        float t = 0.5f * (ray_direction[1] + 1.0f);
+        pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
+        pixel_colour[1] = (1.0f - t) * 255.0f + t * 178.0f; // Green component
+        pixel_colour[2] = (1.0f - t) * 255.0f + t * 255.0f; // Blue component
+
+        memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+    }
+    
 
     
 }

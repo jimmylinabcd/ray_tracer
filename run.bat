@@ -1,3 +1,2 @@
-zig cc -o main.exe main.c
-main.exe
+zig run main.c --library c
 pause
