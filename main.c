@@ -61,6 +61,7 @@ double randomRange(double min, double max);
 double randomDouble();
 
 void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
+vec3 phong_lighting(vec3 normal, vec3 light_dir, vec3 view_dir, float shininess);
 
 void random_unit_vector(vec3 dest);
 
@@ -223,6 +224,8 @@ int main() {
 
     unsigned int index = 0;
 
+    clock_t begin = clock();
+
     for (int y = OUTPUT_IMAGE_HEIGHT - 1; y >= 0; y--) {
         for (unsigned int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
             vec3 pixel_colour = {0, 0, 0};
@@ -261,6 +264,11 @@ int main() {
             index += 3;
         }
     }
+
+    clock_t end = clock();
+    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
+
+    printf("Operation took: %f seconds", time_spent);
 
     printf("Completed, saving image...\n");
     stbi_write_png("output.png", OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT, 3, frameData, 0);
