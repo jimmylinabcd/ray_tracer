@@ -19,10 +19,10 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #endif
 
 #define OUTPUT_IMAGE_HEIGHT 1080
-#define OUTPUT_IMAGE_WIDTH 1920
+#define OUTPUT_IMAGE_WIDTH 1080
 
 #define AA_SAMPLES 2
-#define BOUNCE_DEPTH 1
+#define BOUNCE_DEPTH 5
 
 typedef struct {
     vec3 min;
@@ -61,21 +61,22 @@ double randomRange(double min, double max);
 double randomDouble();
 
 void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
-vec3 phong_lighting(vec3 normal, vec3 light_dir, vec3 view_dir, float shininess);
 
 void random_unit_vector(vec3 dest);
 
 int main() {
     printf("Running Ray Tracer\n");
 
+    srand(time(NULL));
+
     // Scene Description
 
     object scene[2];
 
     vec3 origin = {0.0f, 0.0f, 0.0f};
-    double focal_length = 1.0;
+    double focal_length = 2;
     double viewport_height = 2.0;
-    double viewport_width = (OUTPUT_IMAGE_WIDTH / (double)OUTPUT_IMAGE_HEIGHT) * viewport_height;
+    double viewport_width = ((double)OUTPUT_IMAGE_WIDTH / (double)OUTPUT_IMAGE_HEIGHT) * viewport_height;
 
     vec3 horizontal = {viewport_width, 0, 0};
     vec3 vertical = {0, viewport_height, 0};
@@ -92,47 +93,127 @@ int main() {
 
     // Building Scene
 
-    // create test triangle
-    triangle test_triangle;
-    glm_vec3_copy((vec3){-0.5f, -0.5f, -1.0f}, test_triangle.vertex1);
-    glm_vec3_copy((vec3){0.5f, -0.5f, -1.0f}, test_triangle.vertex2);
-    glm_vec3_copy((vec3){0.0f, 0.5f, -1.0f}, test_triangle.vertex3);
-    // calculate the normal
-    vec3 temp_normal;
-    compute_surface_normal(test_triangle.vertex1, test_triangle.vertex2, test_triangle.vertex3, temp_normal);
+    // Floor
+    triangle floor_triangle1;
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -1.0f}, floor_triangle1.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -1.0f}, floor_triangle1.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, floor_triangle1.vertex3);
+    vec3 temp_normal1;
+    compute_surface_normal(floor_triangle1.vertex1, floor_triangle1.vertex2, floor_triangle1.vertex3, temp_normal1);
 
-
-    // ground plane
-    triangle test_triangle2;
-    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -1.0f}, test_triangle2.vertex1);
-    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -1.0f}, test_triangle2.vertex2);
-    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, test_triangle2.vertex3);
+    triangle floor_triangle2;
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -1.0f}, floor_triangle2.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, floor_triangle2.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, floor_triangle2.vertex3);
     vec3 temp_normal2;
-    compute_surface_normal(test_triangle2.vertex1, test_triangle2.vertex2, test_triangle2.vertex3, temp_normal2);
+    compute_surface_normal(floor_triangle2.vertex1, floor_triangle2.vertex2, floor_triangle2.vertex3, temp_normal2);
 
-    triangle test_triangle3;
-    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -1.0f}, test_triangle3.vertex1);
-    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, test_triangle3.vertex2);
-    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, test_triangle3.vertex3);
+    memcpy(floor_triangle1.normal, temp_normal1, sizeof(vec3));
+    memcpy(floor_triangle2.normal, temp_normal2, sizeof(vec3));
+
+    glm_vec3_copy((vec3){255, 255, 255}, floor_triangle1.colour);
+    glm_vec3_copy((vec3){255, 255, 255}, floor_triangle2.colour);
+
+    // Ceiling
+    triangle ceiling_triangle1;
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -1.0f}, ceiling_triangle1.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -1.0f}, ceiling_triangle1.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -3.0f}, ceiling_triangle1.vertex3);
     vec3 temp_normal3;
-    compute_surface_normal(test_triangle3.vertex1, test_triangle3.vertex2, test_triangle3.vertex3, temp_normal3);
+    compute_surface_normal(ceiling_triangle1.vertex1, ceiling_triangle1.vertex2, ceiling_triangle1.vertex3, temp_normal3);
 
-    memcpy(test_triangle.normal, temp_normal, sizeof(vec3));
-    memcpy(test_triangle2.normal, temp_normal2, sizeof(vec3));
-    memcpy(test_triangle3.normal, temp_normal3, sizeof(vec3));
-    
-    glm_vec3_copy((vec3){255, 255, 255}, test_triangle.colour);
-    glm_vec3_copy((vec3){255, 255, 255}, test_triangle2.colour);
-    glm_vec3_copy((vec3){255, 255, 255}, test_triangle3.colour);
+    triangle ceiling_triangle2;
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -1.0f}, ceiling_triangle2.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -3.0f}, ceiling_triangle2.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -3.0f}, ceiling_triangle2.vertex3);
+    vec3 temp_normal4;
+    compute_surface_normal(ceiling_triangle2.vertex1, ceiling_triangle2.vertex2, ceiling_triangle2.vertex3, temp_normal4);
+
+    memcpy(ceiling_triangle1.normal, temp_normal3, sizeof(vec3));
+    memcpy(ceiling_triangle2.normal, temp_normal4, sizeof(vec3));
+
+    glm_vec3_copy((vec3){255, 255, 255}, ceiling_triangle1.colour);
+    glm_vec3_copy((vec3){255, 255, 255}, ceiling_triangle2.colour);
+
+    // Left wall
+    triangle left_wall_triangle1;
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -1.0f}, left_wall_triangle1.vertex1);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -1.0f}, left_wall_triangle1.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, left_wall_triangle1.vertex3);
+    vec3 temp_normal5;
+    compute_surface_normal(left_wall_triangle1.vertex1, left_wall_triangle1.vertex2, left_wall_triangle1.vertex3, temp_normal5);
+
+    triangle left_wall_triangle2;
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -1.0f}, left_wall_triangle2.vertex1);
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, left_wall_triangle2.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -3.0f}, left_wall_triangle2.vertex3);
+    vec3 temp_normal6;
+    compute_surface_normal(left_wall_triangle2.vertex1, left_wall_triangle2.vertex2, left_wall_triangle2.vertex3, temp_normal6);
+
+    memcpy(left_wall_triangle1.normal, temp_normal5, sizeof(vec3));
+    memcpy(left_wall_triangle2.normal, temp_normal6, sizeof(vec3));
+
+    glm_vec3_copy((vec3){255, 0, 0}, left_wall_triangle1.colour);
+    glm_vec3_copy((vec3){255, 0, 0}, left_wall_triangle2.colour);
+
+    // Right wall
+    triangle right_wall_triangle1;
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -1.0f}, right_wall_triangle1.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -1.0f}, right_wall_triangle1.vertex2);
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, right_wall_triangle1.vertex3);
+    vec3 temp_normal7;
+    compute_surface_normal(right_wall_triangle1.vertex1, right_wall_triangle1.vertex2, right_wall_triangle1.vertex3, temp_normal7);
+
+    triangle right_wall_triangle2;
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -1.0f}, right_wall_triangle2.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, right_wall_triangle2.vertex2);
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -3.0f}, right_wall_triangle2.vertex3);
+    vec3 temp_normal8;
+    compute_surface_normal(right_wall_triangle2.vertex1, right_wall_triangle2.vertex2, right_wall_triangle2.vertex3, temp_normal8);
+
+    memcpy(right_wall_triangle1.normal, temp_normal7, sizeof(vec3));
+    memcpy(right_wall_triangle2.normal, temp_normal8, sizeof(vec3));
+
+    glm_vec3_copy((vec3){0, 0, 255}, right_wall_triangle1.colour);
+    glm_vec3_copy((vec3){0, 0, 255}, right_wall_triangle2.colour);
+
+    // Back wall
+    triangle back_wall_triangle1;
+    glm_vec3_copy((vec3){-viewport_width / 2, -viewport_height / 2, -3.0f}, back_wall_triangle1.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, back_wall_triangle1.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -3.0f}, back_wall_triangle1.vertex3);
+    vec3 temp_normal9;
+    compute_surface_normal(back_wall_triangle1.vertex1, back_wall_triangle1.vertex2, back_wall_triangle1.vertex3, temp_normal9);
+
+    triangle back_wall_triangle2;
+    glm_vec3_copy((vec3){viewport_width / 2, -viewport_height / 2, -3.0f}, back_wall_triangle2.vertex1);
+    glm_vec3_copy((vec3){viewport_width / 2, viewport_height / 2, -3.0f}, back_wall_triangle2.vertex2);
+    glm_vec3_copy((vec3){-viewport_width / 2, viewport_height / 2, -3.0f}, back_wall_triangle2.vertex3);
+    vec3 temp_normal10;
+    compute_surface_normal(back_wall_triangle2.vertex1, back_wall_triangle2.vertex2, back_wall_triangle2.vertex3, temp_normal10);
+
+    memcpy(back_wall_triangle1.normal, temp_normal9, sizeof(vec3));
+    memcpy(back_wall_triangle2.normal, temp_normal10, sizeof(vec3));
+
+    glm_vec3_copy((vec3){0, 255, 0}, back_wall_triangle1.colour);
+    glm_vec3_copy((vec3){0, 255, 0}, back_wall_triangle2.colour);
+
 
     // create test object
     scene[0].id = 0;
     //scene[0].triangle_list = &test_triangle;
-    scene[0].triangle_list = malloc(sizeof(triangle) * 3);
-    scene[0].triangle_list[0] = test_triangle;
-    scene[0].triangle_list[1] = test_triangle2;
-    scene[0].triangle_list[2] = test_triangle3;
-    scene[0].list_size = 3;
+    scene[0].triangle_list = malloc(sizeof(triangle) * 10);
+    scene[0].triangle_list[0] = floor_triangle1;
+    scene[0].triangle_list[1] = floor_triangle2;
+    scene[0].triangle_list[2] = ceiling_triangle1;
+    scene[0].triangle_list[3] = ceiling_triangle2;
+    scene[0].triangle_list[4] = left_wall_triangle1;
+    scene[0].triangle_list[5] = left_wall_triangle2;
+    scene[0].triangle_list[6] = right_wall_triangle1;
+    scene[0].triangle_list[7] = right_wall_triangle2;
+    scene[0].triangle_list[8] = back_wall_triangle1;
+    scene[0].triangle_list[9] = back_wall_triangle2;
+    scene[0].list_size = 10;
     BVH_node test_bvh;
     
     test_bvh.left = NULL;
@@ -217,7 +298,7 @@ int main() {
     // Build save or maybe load bvh?
 
 
-    srand(time(NULL));
+    
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -268,7 +349,7 @@ int main() {
     clock_t end = clock();
     double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
 
-    printf("Operation took: %f seconds", time_spent);
+    printf("Operation took: %f seconds.\n", time_spent);
 
     printf("Completed, saving image...\n");
     stbi_write_png("output.png", OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT, 3, frameData, 0);
@@ -280,19 +361,15 @@ int main() {
 
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene) {
     
-    if (depth < 0){
+    if (depth == 0){
         memcpy(out_pixel_colour, (vec3) {0, 0, 0}, sizeof(vec3));
         return;
     }
 
-    // loop over all the triangles in 1 object
-    // issue with overriding
-    // look at triangle z index
-    // change 2
     vec3 pixel_colour;
     bool changed = false;
 
-    for (unsigned int obj_idx = 0; obj_idx < 2; ++obj_idx) {
+    for (unsigned int obj_idx = 0; obj_idx < 1; ++obj_idx) {
         object* obj = &scene[obj_idx];
 
         for(int i = 0; i < scene->list_size; i++){
@@ -311,11 +388,9 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
             if (distance > 0.0f) {        
                 vec3 reflect_ray, temp, surface_normal;
-                // True Lambertian 
 
                 random_unit_vector(temp);
 
-                //compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
                 memcpy(surface_normal, target_triangle.normal, sizeof(vec3));
 
                 glm_vec3_add(surface_normal, temp, surface_normal);
@@ -327,10 +402,14 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
                 // recursive call
                 trace(intersection, reflect_ray, &pixel_colour, depth - 1, scene);
                 
-                float gamut = 0.5;
+                float gamut = 0.6;
                 pixel_colour[0] *= gamut;
                 pixel_colour[1] *= gamut;
                 pixel_colour[2] *= gamut;
+
+                pixel_colour[0] *= target_triangle.colour[0]/255.0;
+                pixel_colour[1] *= target_triangle.colour[1]/255.0;
+                pixel_colour[2] *= target_triangle.colour[2]/255.0;
 
 
                 if (changed == false){
@@ -382,7 +461,7 @@ void random_unit_vector(vec3 dest) {
         temp[1] = randomRange(-1.0,1.0);
         temp[2] = randomRange(-1.0,1.0);
 
-        if (temp[0]*temp[0] + temp[1]*temp[1] + temp[2]*temp[2] < 1){
+        if ((temp[0]*temp[0] + temp[1]*temp[1] + temp[2]*temp[2]) < 1){
             glm_vec3_normalize(temp);
             glm_vec3_copy(temp, dest);
             return ;
