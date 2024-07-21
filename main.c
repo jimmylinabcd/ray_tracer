@@ -58,7 +58,7 @@ void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, 
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
-double randomRange(int min, int max);
+double randomRange(double min, double max);
 double randomDouble();
 
 void random_unit_vector(vec3 dest);
@@ -169,36 +169,71 @@ int main() {
     vec3 *vertices = (vec3  *)malloc(number_triangles  * 3 * sizeof(vec3));
 
     // Load vertecies into memeory
-
-    // bounding box
-    float maxX = 0;
-	float maxY = 0;
-	float minX = 0;
-	float minY = 0;
-
     scene[1].id = 1;
     scene[1].triangle_list = malloc(sizeof(triangle) * number_triangles);
     scene[1].list_size = number_triangles;
     scene[1].root = test_bvh;
 
     for (unsigned int i = 0; i < number_triangles; i++) {
-        triangle temp;
-        vec3 buffer[4]; 
+    triangle temp;
+    vec3 buffer[4]; 
 
-        fread(buffer, sizeof(vec3) * 4, 1, ptr);
+    fread(buffer, sizeof(vec3) * 4, 1, ptr);
+    
+    memcpy(temp.normal, buffer[0], sizeof(vec3));
+    memcpy(temp.vertex1, buffer[1], sizeof(vec3));
+    memcpy(temp.vertex2, buffer[2], sizeof(vec3));
+    memcpy(temp.vertex3, buffer[3], sizeof(vec3));
+    glm_vec3_copy((vec3){255, 255, 255}, temp.colour);
 
+    scene[1].triangle_list[i] = temp;       
+
+    // Discard attribute 2 byte 
+    fseek(ptr, 2, SEEK_CUR);
+    }
+
+    // Calculate bounding box
+    vec3 min_bound = {INFINITY, INFINITY, INFINITY};
+    vec3 max_bound = {-INFINITY, -INFINITY, -INFINITY};
+
+    for (unsigned int i = 0; i < number_triangles; i++) {
+        vec3 vertex1, vertex2, vertex3;
+        glm_vec3_copy(scene[1].triangle_list[i].vertex1, vertex1);
+        glm_vec3_copy(scene[1].triangle_list[i].vertex2, vertex2);
+        glm_vec3_copy(scene[1].triangle_list[i].vertex3, vertex3);
         
-        memcpy(temp.normal, buffer[0], sizeof(vec3));
-        memcpy(temp.vertex1, buffer[1], sizeof(vec3));
-        memcpy(temp.vertex2, buffer[2], sizeof(vec3));
-        memcpy(temp.vertex3, buffer[3], sizeof(vec3));
-        memcpy(temp.colour, (vec3){255, 255, 255}, sizeof(vec3));
-        glm_vec3_copy((vec3) {255, 255, 255}, temp.colour);
+        min_bound[0] = fmin(min_bound[0], vertex1[0]);
+        min_bound[1] = fmin(min_bound[1], vertex1[1]);
+        min_bound[2] = fmin(min_bound[2], vertex1[2]);
+        max_bound[0] = fmax(max_bound[0], vertex1[0]);
+        max_bound[1] = fmax(max_bound[1], vertex1[1]);
+        max_bound[2] = fmax(max_bound[2], vertex1[2]);
+        
+        min_bound[0] = fmin(min_bound[0], vertex2[0]);
+        min_bound[1] = fmin(min_bound[1], vertex2[1]);
+        min_bound[2] = fmin(min_bound[2], vertex2[2]);
+        max_bound[0] = fmax(max_bound[0], vertex2[0]);
+        max_bound[1] = fmax(max_bound[1], vertex2[1]);
+        max_bound[2] = fmax(max_bound[2], vertex2[2]);
+        
+        min_bound[0] = fmin(min_bound[0], vertex3[0]);
+        min_bound[1] = fmin(min_bound[1], vertex3[1]);
+        min_bound[2] = fmin(min_bound[2], vertex3[2]);
+        max_bound[0] = fmax(max_bound[0], vertex3[0]);
+        max_bound[1] = fmax(max_bound[1], vertex3[1]);
+        max_bound[2] = fmax(max_bound[2], vertex3[2]);
+    }
 
-        scene[1].triangle_list[i] = temp;       
+    // Compute center of bounding box
+    vec3 center;
+    glm_vec3_add(min_bound, max_bound, center);
+    glm_vec3_scale(center, 0.5f, center);
 
-        // Discard attribute 2 byte 
-        fseek(ptr, 2, SEEK_CUR);
+    // Translate vertices to center the model
+    for (unsigned int i = 0; i < number_triangles; i++) {
+        glm_vec3_sub(scene[1].triangle_list[i].vertex1, center, scene[1].triangle_list[i].vertex1);
+        glm_vec3_sub(scene[1].triangle_list[i].vertex2, center, scene[1].triangle_list[i].vertex2);
+        glm_vec3_sub(scene[1].triangle_list[i].vertex3, center, scene[1].triangle_list[i].vertex3);
     }
 
     
@@ -291,12 +326,10 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
         if (distance > 0.0f) {        
             vec3 reflect_ray, temp, surface_normal;
-
             // True Lambertian 
 
             random_unit_vector(temp);
 
-            // reading surface normal
             //compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
             memcpy(surface_normal, target_triangle.normal, sizeof(vec3));
 
@@ -356,12 +389,11 @@ void random_unit_vector(vec3 dest) {
     // Terrible method
      while (true){
         vec3 temp;
-        temp[0] = randomRange(-1,1);
-        temp[1] = randomRange(-1,1);
-        temp[2] = randomRange(-1,1);
+        temp[0] = randomRange(-1.0,1.0);
+        temp[1] = randomRange(-1.0,1.0);
+        temp[2] = randomRange(-1.0,1.0);
 
-        glm_vec3_normalize(temp);
-        if (temp[0]*temp[0] + temp[1]*temp[1] + temp[2]*temp[2] >= 1){
+        if (temp[0]*temp[0] + temp[1]*temp[1] + temp[2]*temp[2] < 1){
             glm_vec3_normalize(temp);
             glm_vec3_copy(temp, dest);
             return ;
@@ -369,7 +401,7 @@ void random_unit_vector(vec3 dest) {
     }
 }
 
-double randomRange(int min, int max){
+double randomRange(double min, double max){
 	return min + (max-min)*randomDouble();
 }
 
@@ -477,5 +509,3 @@ void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec
     glm_vec3_scale(ray_direction, *tmin, *out_intersection);
     glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
 }
-
-
