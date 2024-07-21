@@ -54,12 +54,13 @@ typedef struct {
 } object;
 
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
-void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection);
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 double randomRange(double min, double max);
 double randomDouble();
+
+void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
 
 void random_unit_vector(vec3 dest);
 
@@ -192,38 +193,10 @@ int main() {
     fseek(ptr, 2, SEEK_CUR);
     }
 
-    // Calculate bounding box
-    vec3 min_bound = {INFINITY, INFINITY, INFINITY};
-    vec3 max_bound = {-INFINITY, -INFINITY, -INFINITY};
+    vec3 min_bound;
+    vec3 max_bound;
 
-    for (unsigned int i = 0; i < number_triangles; i++) {
-        vec3 vertex1, vertex2, vertex3;
-        glm_vec3_copy(scene[1].triangle_list[i].vertex1, vertex1);
-        glm_vec3_copy(scene[1].triangle_list[i].vertex2, vertex2);
-        glm_vec3_copy(scene[1].triangle_list[i].vertex3, vertex3);
-        
-        min_bound[0] = fmin(min_bound[0], vertex1[0]);
-        min_bound[1] = fmin(min_bound[1], vertex1[1]);
-        min_bound[2] = fmin(min_bound[2], vertex1[2]);
-        max_bound[0] = fmax(max_bound[0], vertex1[0]);
-        max_bound[1] = fmax(max_bound[1], vertex1[1]);
-        max_bound[2] = fmax(max_bound[2], vertex1[2]);
-        
-        min_bound[0] = fmin(min_bound[0], vertex2[0]);
-        min_bound[1] = fmin(min_bound[1], vertex2[1]);
-        min_bound[2] = fmin(min_bound[2], vertex2[2]);
-        max_bound[0] = fmax(max_bound[0], vertex2[0]);
-        max_bound[1] = fmax(max_bound[1], vertex2[1]);
-        max_bound[2] = fmax(max_bound[2], vertex2[2]);
-        
-        min_bound[0] = fmin(min_bound[0], vertex3[0]);
-        min_bound[1] = fmin(min_bound[1], vertex3[1]);
-        min_bound[2] = fmin(min_bound[2], vertex3[2]);
-        max_bound[0] = fmax(max_bound[0], vertex3[0]);
-        max_bound[1] = fmax(max_bound[1], vertex3[1]);
-        max_bound[2] = fmax(max_bound[2], vertex3[2]);
-    }
-
+    simple_bounding_box(scene, min_bound, max_bound);
     // Compute center of bounding box
     vec3 center;
     glm_vec3_add(min_bound, max_bound, center);
@@ -307,54 +280,62 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     // loop over all the triangles in 1 object
     // issue with overriding
     // look at triangle z index
+    // change 2
     vec3 pixel_colour;
     bool changed = false;
 
-    for(int i = 0; i < scene->list_size; i++){
-        vec3 vertex1, vertex2, vertex3;
+    for (unsigned int obj_idx = 0; obj_idx < 2; ++obj_idx) {
+        object* obj = &scene[obj_idx];
 
-        triangle target_triangle = scene->triangle_list[i];
+        for(int i = 0; i < scene->list_size; i++){
+            vec3 vertex1, vertex2, vertex3;
 
-        glm_vec3_copy(target_triangle.vertex1, vertex1);
-        glm_vec3_copy(target_triangle.vertex2, vertex2);
-        glm_vec3_copy(target_triangle.vertex3, vertex3);
-        
-        float distance = -1.0f;
-        vec3 intersection;
+            triangle target_triangle = obj->triangle_list[i];
 
-        ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
-
-        if (distance > 0.0f) {        
-            vec3 reflect_ray, temp, surface_normal;
-            // True Lambertian 
-
-            random_unit_vector(temp);
-
-            //compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
-            memcpy(surface_normal, target_triangle.normal, sizeof(vec3));
-
-            glm_vec3_add(surface_normal, temp, surface_normal);
-
-            glm_vec3_normalize(surface_normal);
-
-            glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
-
-            // recursive call
-            trace(intersection, reflect_ray, &pixel_colour, depth - 1, scene);
+            glm_vec3_copy(target_triangle.vertex1, vertex1);
+            glm_vec3_copy(target_triangle.vertex2, vertex2);
+            glm_vec3_copy(target_triangle.vertex3, vertex3);
             
-            float gamut = 0.5;
-            pixel_colour[0] *= gamut;
-            pixel_colour[1] *= gamut;
-            pixel_colour[2] *= gamut;
+            float distance = -1.0f;
+            vec3 intersection;
+
+            ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
+
+            if (distance > 0.0f) {        
+                vec3 reflect_ray, temp, surface_normal;
+                // True Lambertian 
+
+                random_unit_vector(temp);
+
+                //compute_surface_normal(vertex1, vertex2, vertex3, surface_normal);
+                memcpy(surface_normal, target_triangle.normal, sizeof(vec3));
+
+                glm_vec3_add(surface_normal, temp, surface_normal);
+
+                glm_vec3_normalize(surface_normal);
+
+                glm_vec3_reflect(ray_direction, surface_normal, reflect_ray);
+
+                // recursive call
+                trace(intersection, reflect_ray, &pixel_colour, depth - 1, scene);
+                
+                float gamut = 0.5;
+                pixel_colour[0] *= gamut;
+                pixel_colour[1] *= gamut;
+                pixel_colour[2] *= gamut;
 
 
-            if (changed == false){
-                memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
-                changed = true;
+                if (changed == false){
+                    memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
+                    changed = true;
+                }
+                
             }
-            
         }
     }
+    
+
+    
     if (changed == false){
         float t = 0.5f * (ray_direction[1] + 1.0f);
         pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
@@ -454,31 +435,6 @@ void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, v
     }
 }
 
-void ray_plane_intersection(vec3 ray_origin, vec3 ray_vector, vec3 plane_point, vec3 plane_normal, float* t, vec3* out_intersection) {
-    const float epsilon = 0.000001;
-    float denom = glm_vec3_dot(plane_normal, ray_vector);
-
-    // check if the ray is parallel to the plane
-    if (fabs(denom) < epsilon) {
-        *t = -1.0f;
-        return;
-    }
-
-    vec3 p0l0;
-    glm_vec3_sub(plane_point, ray_origin, p0l0);
-    *t = glm_vec3_dot(p0l0, plane_normal) / denom;
-
-    // check if the intersection is behind the ray origin
-    if (*t < 0) {
-        *t = -1.0f;
-        return;
-    }
-
-    glm_vec3_scale(ray_vector, *t, *out_intersection);
-    glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
-    return;
-}
-
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection) {
     const float epsilon = 0.000001;
 
@@ -508,4 +464,45 @@ void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec
     // Calculate intersection point
     glm_vec3_scale(ray_direction, *tmin, *out_intersection);
     glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
+}
+
+void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box){
+
+    object* obj = &scene[1];
+
+    // Calculate bounding box
+    vec3 min_bound = {INFINITY, INFINITY, INFINITY};
+    vec3 max_bound = {-INFINITY, -INFINITY, -INFINITY};
+
+    for (unsigned int i = 0; i < obj->list_size; i++) {
+        vec3 vertex1, vertex2, vertex3;
+        glm_vec3_copy(obj->triangle_list[i].vertex1, vertex1);
+        glm_vec3_copy(obj->triangle_list[i].vertex2, vertex2);
+        glm_vec3_copy(obj->triangle_list[i].vertex3, vertex3);
+        
+        min_bound[0] = fmin(min_bound[0], vertex1[0]);
+        min_bound[1] = fmin(min_bound[1], vertex1[1]);
+        min_bound[2] = fmin(min_bound[2], vertex1[2]);
+        max_bound[0] = fmax(max_bound[0], vertex1[0]);
+        max_bound[1] = fmax(max_bound[1], vertex1[1]);
+        max_bound[2] = fmax(max_bound[2], vertex1[2]);
+        
+        min_bound[0] = fmin(min_bound[0], vertex2[0]);
+        min_bound[1] = fmin(min_bound[1], vertex2[1]);
+        min_bound[2] = fmin(min_bound[2], vertex2[2]);
+        max_bound[0] = fmax(max_bound[0], vertex2[0]);
+        max_bound[1] = fmax(max_bound[1], vertex2[1]);
+        max_bound[2] = fmax(max_bound[2], vertex2[2]);
+        
+        min_bound[0] = fmin(min_bound[0], vertex3[0]);
+        min_bound[1] = fmin(min_bound[1], vertex3[1]);
+        min_bound[2] = fmin(min_bound[2], vertex3[2]);
+        max_bound[0] = fmax(max_bound[0], vertex3[0]);
+        max_bound[1] = fmax(max_bound[1], vertex3[1]);
+        max_bound[2] = fmax(max_bound[2], vertex3[2]);
+    }
+
+    glm_vec3_copy(min_bound, min_box);
+    glm_vec3_copy(max_bound, max_box);
+
 }
