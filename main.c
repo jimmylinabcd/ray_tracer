@@ -2,10 +2,12 @@
 #include <stdbool.h>
 #include <string.h>
 #include <time.h>
+#include <float.h>
 #include <stdlib.h>
 #include <math.h>
 #include <cglm/cglm.h>
 #include <cglm/call.h>
+
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
@@ -60,6 +62,8 @@ void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 double randomRange(double min, double max);
 double randomDouble();
 
+ create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color)
+
 void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
 
 void random_unit_vector(vec3 dest);
@@ -89,7 +93,6 @@ int main() {
 
     glm_vec3_scale(lower_left_corner, 0.5f, lower_left_corner);
     glm_vec3_add(lower_left_corner, origin, lower_left_corner);
-
 
     // Building Scene
 
@@ -199,10 +202,34 @@ int main() {
     glm_vec3_copy((vec3){0, 255, 0}, back_wall_triangle2.colour);
 
 
+    triangle light_triangle1;
+    vec3 light_center = {0, (viewport_height / 2) - 0.5, -2.0f};
+    float light_size = 1.0f;
+
+    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle1.vertex1);
+    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle1.vertex2);
+    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle1.vertex3);
+    vec3 temp_normal_light1;
+    compute_surface_normal(light_triangle1.vertex1, light_triangle1.vertex2, light_triangle1.vertex3, temp_normal_light1);
+
+    triangle light_triangle2;
+    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle2.vertex1);
+    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle2.vertex2);
+    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle2.vertex3);
+    vec3 temp_normal_light2;
+    compute_surface_normal(light_triangle2.vertex1, light_triangle2.vertex2, light_triangle2.vertex3, temp_normal_light2);
+
+    memcpy(light_triangle1.normal, temp_normal_light1, sizeof(vec3));
+    memcpy(light_triangle2.normal, temp_normal_light2, sizeof(vec3));
+
+    // Set the light color (e.g., white)
+    glm_vec3_copy((vec3){255, 255, 255}, light_triangle1.colour);
+    glm_vec3_copy((vec3){255, 255, 255}, light_triangle2.colour);
+
     // create test object
     scene[0].id = 0;
     //scene[0].triangle_list = &test_triangle;
-    scene[0].triangle_list = malloc(sizeof(triangle) * 10);
+    scene[0].triangle_list = malloc(sizeof(triangle) * 12);
     scene[0].triangle_list[0] = floor_triangle1;
     scene[0].triangle_list[1] = floor_triangle2;
     scene[0].triangle_list[2] = ceiling_triangle1;
@@ -213,7 +240,9 @@ int main() {
     scene[0].triangle_list[7] = right_wall_triangle2;
     scene[0].triangle_list[8] = back_wall_triangle1;
     scene[0].triangle_list[9] = back_wall_triangle2;
-    scene[0].list_size = 10;
+    scene[0].triangle_list[10] = light_triangle1;
+    scene[0].triangle_list[11] = light_triangle2;
+    scene[0].list_size = 12;
     BVH_node test_bvh;
     
     test_bvh.left = NULL;
@@ -226,9 +255,7 @@ int main() {
     glm_vec3_copy((vec3){0.5f, 0.5f, -1.0f}, test_bounding_box.max);
     test_bvh.bdbox = test_bounding_box;
 
-
     scene[0].root = test_bvh;
-
 
     // Loading Object
 
@@ -291,14 +318,7 @@ int main() {
         glm_vec3_sub(scene[1].triangle_list[i].vertex3, center, scene[1].triangle_list[i].vertex3);
     }
 
-    
-
     fclose(ptr);
-
-    // Build save or maybe load bvh?
-
-
-    
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -386,7 +406,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
             ray_triangle_intersection(ray_origin, ray_direction, vertex1, vertex2, vertex3, &distance, &intersection);
 
-            if (distance > 0.0f) {        
+            if (distance > 0.0f && distance < FLT_MAX) {        
                 vec3 reflect_ray, temp, surface_normal;
 
                 random_unit_vector(temp);
@@ -401,16 +421,15 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
                 // recursive call
                 trace(intersection, reflect_ray, &pixel_colour, depth - 1, scene);
+
+                pixel_colour[0] *= target_triangle.colour[0]/255.0;
+                pixel_colour[1] *= target_triangle.colour[1]/255.0;
+                pixel_colour[2] *= target_triangle.colour[2]/255.0;
                 
                 float gamut = 0.6;
                 pixel_colour[0] *= gamut;
                 pixel_colour[1] *= gamut;
                 pixel_colour[2] *= gamut;
-
-                pixel_colour[0] *= target_triangle.colour[0]/255.0;
-                pixel_colour[1] *= target_triangle.colour[1]/255.0;
-                pixel_colour[2] *= target_triangle.colour[2]/255.0;
-
 
                 if (changed == false){
                     memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
@@ -592,4 +611,12 @@ void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box){
     glm_vec3_copy(min_bound, min_box);
     glm_vec3_copy(max_bound, max_box);
 
+}
+
+void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color) {
+    glm_vec3_copy(v1, tri->vertex1);
+    glm_vec3_copy(v2, tri->vertex2);
+    glm_vec3_copy(v3, tri->vertex3);
+    compute_surface_normal(v1, v2, v3, tri->normal);
+    glm_vec3_copy(color, tri->colour);
 }
