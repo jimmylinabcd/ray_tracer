@@ -24,7 +24,7 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define OUTPUT_IMAGE_WIDTH 1080
 
 #define AA_SAMPLES 2
-#define BOUNCE_DEPTH 5
+#define BOUNCE_DEPTH 3
 
 typedef struct {
     vec3 min;
@@ -62,7 +62,7 @@ void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 double randomRange(double min, double max);
 double randomDouble();
 
- create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color)
+void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color);
 
 void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
 
@@ -78,7 +78,7 @@ int main() {
     object scene[2];
 
     vec3 origin = {0.0f, 0.0f, 0.0f};
-    double focal_length = 2;
+    double focal_length = 1;
     double viewport_height = 2.0;
     double viewport_width = ((double)OUTPUT_IMAGE_WIDTH / (double)OUTPUT_IMAGE_HEIGHT) * viewport_height;
 
@@ -276,7 +276,6 @@ int main() {
   
     printf("Loading %d triangles from %s...\n", number_triangles, file_name);
 
-    vec3 *vertices = (vec3  *)malloc(number_triangles  * 3 * sizeof(vec3));
 
     // Load vertecies into memeory
     scene[1].id = 1;
@@ -284,41 +283,56 @@ int main() {
     scene[1].list_size = number_triangles;
     scene[1].root = test_bvh;
 
-    for (unsigned int i = 0; i < number_triangles; i++) {
-    triangle temp;
-    vec3 buffer[4]; 
+    vec3 *verticies = (vec3  *)malloc(number_triangles  * 3 * sizeof(vec3));
 
-    fread(buffer, sizeof(vec3) * 4, 1, ptr);
-    
-    memcpy(temp.normal, buffer[0], sizeof(vec3));
-    memcpy(temp.vertex1, buffer[1], sizeof(vec3));
-    memcpy(temp.vertex2, buffer[2], sizeof(vec3));
-    memcpy(temp.vertex3, buffer[3], sizeof(vec3));
-    glm_vec3_copy((vec3){255, 255, 255}, temp.colour);
-
-    scene[1].triangle_list[i] = temp;       
-
-    // Discard attribute 2 byte 
-    fseek(ptr, 2, SEEK_CUR);
+	if (verticies == NULL) {
+        printf("Memory allocation failed\n");
+        fclose(ptr);
+        return 1;
     }
+
+    for (unsigned int i = 0; i < number_triangles; i++) {
+        // Discard normal vector 12 bytes
+        fseek(ptr, 12, SEEK_CUR);
+
+        // Read verticies 3 * 12 bytes
+        fread(&verticies[i * 3], sizeof(vec3), 3, ptr);
+
+	    // Discard attribute byte count 2 bytes
+        fseek(ptr, 2, SEEK_CUR);
+    }
+
+    fclose(ptr);
+
+	printf("Loaded %d triangles\n", number_triangles);
+
+	for (unsigned int i = 0; i < number_triangles; i++) {
+        triangle *tri = &scene[1].triangle_list[i];
+        glm_vec3_copy(verticies[i * 3], tri->vertex1);
+        glm_vec3_copy(verticies[i * 3 + 1], tri->vertex2);
+        glm_vec3_copy(verticies[i * 3 + 2], tri->vertex3);
+
+        // Compute normal
+        compute_surface_normal(tri->vertex1, tri->vertex2, tri->vertex3, tri->normal);
+
+        // Set color to white
+        glm_vec3_copy((vec3){255, 255, 255}, tri->colour);
+    }
+
+    //for (unsigned int i = 0; i < number_triangles; i++) {
+        //printf("(%f, %f, %f)\n", verticies[i][0], verticies[i][1], verticies[i][2]);
+        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex1[0], scene[1].triangle_list[i].vertex1[1], scene[1].triangle_list[i].vertex1[2]);
+        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex2[0], scene[1].triangle_list[i].vertex2[1], scene[1].triangle_list[i].vertex2[2]);
+        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex3[0], scene[1].triangle_list[i].vertex3[1], scene[1].triangle_list[i].vertex3[2]);
+
+    //}
 
     vec3 min_bound;
     vec3 max_bound;
 
     simple_bounding_box(scene, min_bound, max_bound);
-    // Compute center of bounding box
-    vec3 center;
-    glm_vec3_add(min_bound, max_bound, center);
-    glm_vec3_scale(center, 0.5f, center);
 
-    // Translate vertices to center the model
-    for (unsigned int i = 0; i < number_triangles; i++) {
-        glm_vec3_sub(scene[1].triangle_list[i].vertex1, center, scene[1].triangle_list[i].vertex1);
-        glm_vec3_sub(scene[1].triangle_list[i].vertex2, center, scene[1].triangle_list[i].vertex2);
-        glm_vec3_sub(scene[1].triangle_list[i].vertex3, center, scene[1].triangle_list[i].vertex3);
-    }
-
-    fclose(ptr);
+    printf("Object is bound as by:\nMAX: %f, %f, %f\nMIN: %f, %f, %f\n", max_bound[0], max_bound[1], max_bound[2], min_bound[0], min_bound[1], min_bound[2]);
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -389,10 +403,10 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     vec3 pixel_colour;
     bool changed = false;
 
-    for (unsigned int obj_idx = 0; obj_idx < 1; ++obj_idx) {
+    for (unsigned int obj_idx = 0; obj_idx < 2; obj_idx++) {
         object* obj = &scene[obj_idx];
 
-        for(int i = 0; i < scene->list_size; i++){
+        for(int i = 0; i < obj->list_size; i++){
             vec3 vertex1, vertex2, vertex3;
 
             triangle target_triangle = obj->triangle_list[i];
@@ -400,7 +414,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
             glm_vec3_copy(target_triangle.vertex1, vertex1);
             glm_vec3_copy(target_triangle.vertex2, vertex2);
             glm_vec3_copy(target_triangle.vertex3, vertex3);
-            
+                        
             float distance = -1.0f;
             vec3 intersection;
 
@@ -411,7 +425,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
                 random_unit_vector(temp);
 
-                memcpy(surface_normal, target_triangle.normal, sizeof(vec3));
+                glm_vec3_copy(target_triangle.normal, surface_normal);
 
                 glm_vec3_add(surface_normal, temp, surface_normal);
 
