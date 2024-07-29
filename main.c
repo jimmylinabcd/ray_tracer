@@ -7,24 +7,24 @@
 #include <math.h>
 #include <cglm/cglm.h>
 #include <cglm/call.h>
-
+#include "tinycthread.h"
+#include <stddef.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-typedef vec3 mat3[3];
+#define OUTPUT_IMAGE_HEIGHT 1080
+#define OUTPUT_IMAGE_WIDTH 1080
+#define AA_SAMPLES 2
+#define BOUNCE_DEPTH 5
+#define NUM_THREADS 4
 
+typedef vec3 mat3[3];
 #ifdef __AVX__
 typedef CGLM_ALIGN_IF(32) vec4 mat4[4];
 #else
 typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #endif
-
-#define OUTPUT_IMAGE_HEIGHT 1080
-#define OUTPUT_IMAGE_WIDTH 1080
-
-#define AA_SAMPLES 2
-#define BOUNCE_DEPTH 5
 
 typedef struct {
     vec3 min;
@@ -35,7 +35,6 @@ typedef struct BVH_node{
     bounding_box bdbox;
     struct BVH_node* left;
     struct BVH_node* right;
-    // obj list needs to be sorted
     unsigned int triangle_index_start;
     unsigned int triangle_number;
 } BVH_node;
@@ -55,18 +54,26 @@ typedef struct {
     BVH_node root;
 } object;
 
+typedef struct {
+    unsigned char* frameData;
+    int thread_id;
+    object* scene;
+    vec3 lower_left_corner;
+    vec3 horizontal;
+    vec3 vertical;
+    vec3 origin;
+} thread_data;
+
 void ray_triangle_intersection(vec3 ray_origin, vec3 ray_vector, vec3 vertex1, vec3 vertex2, vec3 vertex3, float* t, vec3* out_intersection);
 void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec3 box_max, float* tmin, float* tmax, vec3* out_intersection);
 void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned int depth, object* scene);
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal);
 double randomRange(double min, double max);
 double randomDouble();
-
 void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color);
-
 void scale_and_center_model(object* obj, vec3 center_position);
-
 void random_unit_vector(vec3 dest);
+int render_thread(void* arg);
 
 int main() {
     printf("Running Ray Tracer\n");
@@ -334,53 +341,26 @@ int main() {
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
 
-    unsigned int index = 0;
+   thread_data t_data[NUM_THREADS];
+    thrd_t threads[NUM_THREADS];
 
-    clock_t begin = clock();
+    // Divide work among threads
+    for (int i = 0; i < NUM_THREADS; i++) {
+        t_data[i].frameData = frameData;
+        t_data[i].thread_id = i;
+        t_data[i].scene = scene;
+        glm_vec3_copy(lower_left_corner, t_data[i].lower_left_corner);
+        glm_vec3_copy(horizontal, t_data[i].horizontal);
+        glm_vec3_copy(vertical, t_data[i].vertical);
+        glm_vec3_copy(origin, t_data[i].origin);
 
-    for (int y = OUTPUT_IMAGE_HEIGHT - 1; y >= 0; y--) {
-        for (unsigned int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
-            vec3 pixel_colour = {0, 0, 0};
-
-            for (int i = 0; i < AA_SAMPLES; i++) {
-                // Implement BVH here
-                double u = ((double) x + randomDouble()) / (OUTPUT_IMAGE_WIDTH - 1);
-                double v = ((double) y + randomDouble()) / (OUTPUT_IMAGE_HEIGHT - 1);
-
-                vec3 ray_direction;
-                glm_vec3_copy(lower_left_corner, ray_direction);
-                vec3 scaled_horizontal, scaled_vertical;
-                glm_vec3_scale(horizontal, u, scaled_horizontal);
-                glm_vec3_scale(vertical, v, scaled_vertical);
-                glm_vec3_add(ray_direction, scaled_horizontal, ray_direction);
-                glm_vec3_add(ray_direction, scaled_vertical, ray_direction);
-                glm_vec3_sub(ray_direction, origin, ray_direction);
-
-                glm_vec3_normalize(ray_direction);
-
-                vec3 temp;
-
-                trace(origin, ray_direction, &temp, BOUNCE_DEPTH, scene);
-
-                pixel_colour[0] += temp[0];
-                pixel_colour[1] += temp[1];
-                pixel_colour[2] += temp[2];
-                
-            }
-
-            glm_vec3_clamp(pixel_colour, 0 , AA_SAMPLES * 255);
-            frameData[index] = (unsigned char) (pixel_colour[0] / AA_SAMPLES);
-            frameData[index + 1] = (unsigned char) (pixel_colour[1] / AA_SAMPLES);
-            frameData[index + 2] = (unsigned char) (pixel_colour[2] / AA_SAMPLES);
-
-            index += 3;
-        }
+        thrd_create(&threads[i], render_thread, &t_data[i]);
     }
 
-    clock_t end = clock();
-    double time_spent = (double)(end - begin) / CLOCKS_PER_SEC;
-
-    printf("Operation took: %f seconds.\n", time_spent);
+    // Wait for all threads to complete
+    for (int i = 0; i < NUM_THREADS; i++) {
+        thrd_join(threads[i], NULL);
+    }
 
     printf("Completed, saving image...\n");
     stbi_write_png("output.png", OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT, 3, frameData, 0);
@@ -651,4 +631,48 @@ void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color) {
     glm_vec3_copy(v3, tri->vertex3);
     compute_surface_normal(v1, v2, v3, tri->normal);
     glm_vec3_copy(color, tri->colour);
+}
+
+int render_thread(void* arg) {
+    thread_data* tdata = (thread_data*)arg;
+
+    int start = (OUTPUT_IMAGE_HEIGHT / NUM_THREADS) * tdata->thread_id;
+    int end = (OUTPUT_IMAGE_HEIGHT / NUM_THREADS) * (tdata->thread_id + 1);
+
+    for (int y = end - 1; y >= start; y--) {
+        for (unsigned int x = 0; x < OUTPUT_IMAGE_WIDTH; x++) {
+            vec3 pixel_colour = {0, 0, 0};
+
+            for (int i = 0; i < AA_SAMPLES; i++) {
+                double u = ((double)x + randomDouble()) / (OUTPUT_IMAGE_WIDTH - 1);
+                double v = ((double)y + randomDouble()) / (OUTPUT_IMAGE_HEIGHT - 1);
+
+                vec3 ray_direction;
+                glm_vec3_copy(tdata->lower_left_corner, ray_direction);
+                vec3 scaled_horizontal, scaled_vertical;
+                glm_vec3_scale(tdata->horizontal, u, scaled_horizontal);
+                glm_vec3_scale(tdata->vertical, v, scaled_vertical);
+                glm_vec3_add(ray_direction, scaled_horizontal, ray_direction);
+                glm_vec3_add(ray_direction, scaled_vertical, ray_direction);
+                glm_vec3_sub(ray_direction, tdata->origin, ray_direction);
+
+                glm_vec3_normalize(ray_direction);
+
+                vec3 temp;
+                trace(tdata->origin, ray_direction, &temp, BOUNCE_DEPTH, tdata->scene);
+
+                pixel_colour[0] += temp[0];
+                pixel_colour[1] += temp[1];
+                pixel_colour[2] += temp[2];
+            }
+
+            glm_vec3_clamp(pixel_colour, 0, AA_SAMPLES * 255);
+            int index = (y * OUTPUT_IMAGE_WIDTH + x) * 3;
+            tdata->frameData[index] = (unsigned char)(pixel_colour[0] / AA_SAMPLES);
+            tdata->frameData[index + 1] = (unsigned char)(pixel_colour[1] / AA_SAMPLES);
+            tdata->frameData[index + 2] = (unsigned char)(pixel_colour[2] / AA_SAMPLES);
+        }
+    }
+
+    return 0;
 }
