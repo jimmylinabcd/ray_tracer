@@ -24,7 +24,7 @@ typedef CGLM_ALIGN_IF(16) vec4 mat4[4];
 #define OUTPUT_IMAGE_WIDTH 1080
 
 #define AA_SAMPLES 2
-#define BOUNCE_DEPTH 3
+#define BOUNCE_DEPTH 5
 
 typedef struct {
     vec3 min;
@@ -64,7 +64,7 @@ double randomDouble();
 
 void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color);
 
-void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box);
+void scale_and_center_model(object* obj, vec3 center_position);
 
 void random_unit_vector(vec3 dest);
 
@@ -327,12 +327,9 @@ int main() {
 
     //}
 
-    vec3 min_bound;
-    vec3 max_bound;
 
-    simple_bounding_box(scene, min_bound, max_bound);
-
-    printf("Object is bound as by:\nMAX: %f, %f, %f\nMIN: %f, %f, %f\n", max_bound[0], max_bound[1], max_bound[2], min_bound[0], min_bound[1], min_bound[2]);
+    vec3 center_position = {0.0f, 0.0f, -0.1f};  // Example center position
+    scale_and_center_model(&scene[1], center_position);  // Assuming the knight model is in scene[1]
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
@@ -586,46 +583,67 @@ void ray_box_intersection(vec3 ray_origin, vec3 ray_direction, vec3 box_min, vec
     glm_vec3_add(ray_origin, *out_intersection, *out_intersection);
 }
 
-void simple_bounding_box(object* scene, vec3 min_box, vec3 max_box){
-
-    object* obj = &scene[1];
-
-    // Calculate bounding box
-    vec3 min_bound = {INFINITY, INFINITY, INFINITY};
-    vec3 max_bound = {-INFINITY, -INFINITY, -INFINITY};
+void scale_and_center_model(object* obj, vec3 center_position) {
+    // Find the bounding box of the object
+    vec3 min_bound = {FLT_MAX, FLT_MAX, FLT_MAX};
+    vec3 max_bound = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
     for (unsigned int i = 0; i < obj->list_size; i++) {
-        vec3 vertex1, vertex2, vertex3;
-        glm_vec3_copy(obj->triangle_list[i].vertex1, vertex1);
-        glm_vec3_copy(obj->triangle_list[i].vertex2, vertex2);
-        glm_vec3_copy(obj->triangle_list[i].vertex3, vertex3);
-        
-        min_bound[0] = fmin(min_bound[0], vertex1[0]);
-        min_bound[1] = fmin(min_bound[1], vertex1[1]);
-        min_bound[2] = fmin(min_bound[2], vertex1[2]);
-        max_bound[0] = fmax(max_bound[0], vertex1[0]);
-        max_bound[1] = fmax(max_bound[1], vertex1[1]);
-        max_bound[2] = fmax(max_bound[2], vertex1[2]);
-        
-        min_bound[0] = fmin(min_bound[0], vertex2[0]);
-        min_bound[1] = fmin(min_bound[1], vertex2[1]);
-        min_bound[2] = fmin(min_bound[2], vertex2[2]);
-        max_bound[0] = fmax(max_bound[0], vertex2[0]);
-        max_bound[1] = fmax(max_bound[1], vertex2[1]);
-        max_bound[2] = fmax(max_bound[2], vertex2[2]);
-        
-        min_bound[0] = fmin(min_bound[0], vertex3[0]);
-        min_bound[1] = fmin(min_bound[1], vertex3[1]);
-        min_bound[2] = fmin(min_bound[2], vertex3[2]);
-        max_bound[0] = fmax(max_bound[0], vertex3[0]);
-        max_bound[1] = fmax(max_bound[1], vertex3[1]);
-        max_bound[2] = fmax(max_bound[2], vertex3[2]);
+        triangle* tri = &obj->triangle_list[i];
+        vec3* vertices[] = {&tri->vertex1, &tri->vertex2, &tri->vertex3};
+        for (int j = 0; j < 3; j++) {
+            glm_vec3_minv(*vertices[j], min_bound, min_bound);
+            glm_vec3_maxv(*vertices[j], max_bound, max_bound);
+        }
     }
 
-    glm_vec3_copy(min_bound, min_box);
-    glm_vec3_copy(max_bound, max_box);
+    // Calculate the size in each dimension
+    vec3 size;
+    glm_vec3_sub(max_bound, min_bound, size);
 
+    // Find the largest dimension
+    float max_size = fmaxf(fmaxf(size[0], size[1]), size[2]);
+
+    float scale_factor = 0.5f / max_size;
+
+    vec3 box_center;
+    glm_vec3_add(min_bound, max_bound, box_center);
+    glm_vec3_scale(box_center, 0.5f, box_center);
+
+    glm_vec3_scale(box_center, scale_factor, box_center);
+
+    vec3 translation;
+    glm_vec3_sub(center_position, box_center, translation);
+
+    // Apply the scaling and translation to each vertex
+    for (unsigned int i = 0; i < obj->list_size; i++) {
+        triangle* tri = &obj->triangle_list[i];
+        vec3* vertices[] = {&tri->vertex1, &tri->vertex2, &tri->vertex3};
+        for (int j = 0; j < 3; j++) {
+            glm_vec3_scale(*vertices[j], scale_factor, *vertices[j]);
+            glm_vec3_add(*vertices[j], translation, *vertices[j]);
+        }
+    }
+
+    // Recalculate the bounding box after transformation
+    vec3 new_min_bound = {FLT_MAX, FLT_MAX, FLT_MAX};
+    vec3 new_max_bound = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+
+    for (unsigned int i = 0; i < obj->list_size; i++) {
+        triangle* tri = &obj->triangle_list[i];
+        vec3* vertices[] = {&tri->vertex1, &tri->vertex2, &tri->vertex3};
+        for (int j = 0; j < 3; j++) {
+            glm_vec3_minv(*vertices[j], new_min_bound, new_min_bound);
+            glm_vec3_maxv(*vertices[j], new_max_bound, new_max_bound);
+        }
+    }
+
+    // Print the new bounding box
+    printf("New bounding box:\n");
+    printf("MIN: %f, %f, %f\n", new_min_bound[0], new_min_bound[1], new_min_bound[2]);
+    printf("MAX: %f, %f, %f\n", new_max_bound[0], new_max_bound[1], new_max_bound[2]);
 }
+
 
 void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color) {
     glm_vec3_copy(v1, tri->vertex1);
