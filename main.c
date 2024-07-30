@@ -7,16 +7,16 @@
 #include <math.h>
 #include <cglm/cglm.h>
 #include <cglm/call.h>
-#include "tinycthread.h"
+#include <windows.h>
 #include <stddef.h>
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
-#define OUTPUT_IMAGE_HEIGHT 1080
-#define OUTPUT_IMAGE_WIDTH 1080
+#define OUTPUT_IMAGE_HEIGHT 720
+#define OUTPUT_IMAGE_WIDTH 720
 #define AA_SAMPLES 2
-#define BOUNCE_DEPTH 5
+#define BOUNCE_DEPTH 2
 #define NUM_THREADS 4
 
 typedef vec3 mat3[3];
@@ -73,7 +73,7 @@ double randomDouble();
 void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color);
 void scale_and_center_model(object* obj, vec3 center_position);
 void random_unit_vector(vec3 dest);
-int render_thread(void* arg);
+DWORD WINAPI render_thread(LPVOID arg);
 
 int main() {
     printf("Running Ray Tracer\n");
@@ -208,35 +208,10 @@ int main() {
     glm_vec3_copy((vec3){0, 255, 0}, back_wall_triangle1.colour);
     glm_vec3_copy((vec3){0, 255, 0}, back_wall_triangle2.colour);
 
-
-    triangle light_triangle1;
-    vec3 light_center = {0, (viewport_height / 2) - 0.5, -2.0f};
-    float light_size = 1.0f;
-
-    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle1.vertex1);
-    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle1.vertex2);
-    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle1.vertex3);
-    vec3 temp_normal_light1;
-    compute_surface_normal(light_triangle1.vertex1, light_triangle1.vertex2, light_triangle1.vertex3, temp_normal_light1);
-
-    triangle light_triangle2;
-    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] + light_size / 2, light_center[2]}, light_triangle2.vertex1);
-    glm_vec3_copy((vec3){light_center[0] - light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle2.vertex2);
-    glm_vec3_copy((vec3){light_center[0] + light_size / 2, light_center[1] - light_size / 2, light_center[2]}, light_triangle2.vertex3);
-    vec3 temp_normal_light2;
-    compute_surface_normal(light_triangle2.vertex1, light_triangle2.vertex2, light_triangle2.vertex3, temp_normal_light2);
-
-    memcpy(light_triangle1.normal, temp_normal_light1, sizeof(vec3));
-    memcpy(light_triangle2.normal, temp_normal_light2, sizeof(vec3));
-
-    // Set the light color (e.g., white)
-    glm_vec3_copy((vec3){255, 255, 255}, light_triangle1.colour);
-    glm_vec3_copy((vec3){255, 255, 255}, light_triangle2.colour);
-
     // create test object
     scene[0].id = 0;
     //scene[0].triangle_list = &test_triangle;
-    scene[0].triangle_list = malloc(sizeof(triangle) * 12);
+    scene[0].triangle_list = malloc(sizeof(triangle) * 10);
     scene[0].triangle_list[0] = floor_triangle1;
     scene[0].triangle_list[1] = floor_triangle2;
     scene[0].triangle_list[2] = ceiling_triangle1;
@@ -247,9 +222,7 @@ int main() {
     scene[0].triangle_list[7] = right_wall_triangle2;
     scene[0].triangle_list[8] = back_wall_triangle1;
     scene[0].triangle_list[9] = back_wall_triangle2;
-    scene[0].triangle_list[10] = light_triangle1;
-    scene[0].triangle_list[11] = light_triangle2;
-    scene[0].list_size = 12;
+    scene[0].list_size = 10;
     BVH_node test_bvh;
     
     test_bvh.left = NULL;
@@ -285,6 +258,7 @@ int main() {
 
 
     // Load vertecies into memeory
+    // Stupid way to do this but was done for testing then never fixed
     scene[1].id = 1;
     scene[1].triangle_list = malloc(sizeof(triangle) * number_triangles);
     scene[1].list_size = number_triangles;
@@ -326,23 +300,16 @@ int main() {
         glm_vec3_copy((vec3){255, 255, 255}, tri->colour);
     }
 
-    //for (unsigned int i = 0; i < number_triangles; i++) {
-        //printf("(%f, %f, %f)\n", verticies[i][0], verticies[i][1], verticies[i][2]);
-        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex1[0], scene[1].triangle_list[i].vertex1[1], scene[1].triangle_list[i].vertex1[2]);
-        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex2[0], scene[1].triangle_list[i].vertex2[1], scene[1].triangle_list[i].vertex2[2]);
-        //printf("(%f, %f, %f)\n", scene[1].triangle_list[i].vertex3[0], scene[1].triangle_list[i].vertex3[1], scene[1].triangle_list[i].vertex3[2]);
-
-    //}
-
-
-    vec3 center_position = {0.0f, 0.0f, -0.1f};  // Example center position
-    scale_and_center_model(&scene[1], center_position);  // Assuming the knight model is in scene[1]
+    vec3 center_position = {0.0f, 0.0f, -0.1f};
+    scale_and_center_model(&scene[1], center_position);
 
     // Image
     unsigned char* frameData = malloc(OUTPUT_IMAGE_WIDTH * OUTPUT_IMAGE_HEIGHT * 3 * sizeof(char));
 
-   thread_data t_data[NUM_THREADS];
-    thrd_t threads[NUM_THREADS];
+    clock_t start = clock();
+
+    thread_data t_data[NUM_THREADS];
+    HANDLE threads[NUM_THREADS];
 
     // Divide work among threads
     for (int i = 0; i < NUM_THREADS; i++) {
@@ -354,13 +321,21 @@ int main() {
         glm_vec3_copy(vertical, t_data[i].vertical);
         glm_vec3_copy(origin, t_data[i].origin);
 
-        thrd_create(&threads[i], render_thread, &t_data[i]);
+        threads[i] = CreateThread(NULL, 0, render_thread, &t_data[i], 0, NULL);
+        if (threads[i] == NULL) {
+            printf("Error creating thread %d\n", i);
+            return 1;
+        }
     }
 
     // Wait for all threads to complete
-    for (int i = 0; i < NUM_THREADS; i++) {
-        thrd_join(threads[i], NULL);
-    }
+    WaitForMultipleObjects(NUM_THREADS, threads, TRUE, INFINITE);
+
+    clock_t end = clock();
+
+    float seconds = (float)(end - start) / CLOCKS_PER_SEC;
+
+    printf("Operation took: %f seconds.\n", seconds);
 
     printf("Completed, saving image...\n");
     stbi_write_png("output.png", OUTPUT_IMAGE_WIDTH, OUTPUT_IMAGE_HEIGHT, 3, frameData, 0);
@@ -380,7 +355,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
     vec3 pixel_colour;
     bool changed = false;
 
-    for (unsigned int obj_idx = 0; obj_idx < 2; obj_idx++) {
+    for (unsigned int obj_idx = 1; obj_idx < 2; obj_idx++) {
         object* obj = &scene[obj_idx];
 
         for(int i = 0; i < obj->list_size; i++){
@@ -430,9 +405,7 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
             }
         }
     }
-    
 
-    
     if (changed == false){
         float t = 0.5f * (ray_direction[1] + 1.0f);
         pixel_colour[0] = (1.0f - t) * 255.0f + t * 128.0f; // Red component
@@ -441,25 +414,18 @@ void trace(vec3 ray_origin, vec3 ray_direction, vec3* out_pixel_colour, unsigned
 
         memcpy(out_pixel_colour, pixel_colour, sizeof(vec3));
     }
-    
-
-    
 }
 
 void compute_surface_normal(vec3 A, vec3 B, vec3 C, vec3 normal) {
     vec3 AB, AC, crossProd;
 
-    // Compute edge vectors AB and AC
     glm_vec3_sub(B, A, AB);
     glm_vec3_sub(C, A, AC);
 
-    // Compute the cross product of AB and AC to get the normal
     glm_vec3_cross(AB, AC, crossProd);
 
-    // Normalize the normal vector
     glm_vec3_normalize(crossProd);
 
-    // Store the result in the provided normal vector
     glm_vec3_copy(crossProd, normal);
 }
 
@@ -577,11 +543,9 @@ void scale_and_center_model(object* obj, vec3 center_position) {
         }
     }
 
-    // Calculate the size in each dimension
     vec3 size;
     glm_vec3_sub(max_bound, min_bound, size);
 
-    // Find the largest dimension
     float max_size = fmaxf(fmaxf(size[0], size[1]), size[2]);
 
     float scale_factor = 0.5f / max_size;
@@ -595,7 +559,6 @@ void scale_and_center_model(object* obj, vec3 center_position) {
     vec3 translation;
     glm_vec3_sub(center_position, box_center, translation);
 
-    // Apply the scaling and translation to each vertex
     for (unsigned int i = 0; i < obj->list_size; i++) {
         triangle* tri = &obj->triangle_list[i];
         vec3* vertices[] = {&tri->vertex1, &tri->vertex2, &tri->vertex3};
@@ -605,7 +568,6 @@ void scale_and_center_model(object* obj, vec3 center_position) {
         }
     }
 
-    // Recalculate the bounding box after transformation
     vec3 new_min_bound = {FLT_MAX, FLT_MAX, FLT_MAX};
     vec3 new_max_bound = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
@@ -633,7 +595,7 @@ void create_triangle(triangle *tri, vec3 v1, vec3 v2, vec3 v3, vec3 color) {
     glm_vec3_copy(color, tri->colour);
 }
 
-int render_thread(void* arg) {
+DWORD WINAPI render_thread(void* arg) {
     thread_data* tdata = (thread_data*)arg;
 
     int start = (OUTPUT_IMAGE_HEIGHT / NUM_THREADS) * tdata->thread_id;
